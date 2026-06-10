@@ -1,0 +1,2428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="FinPlan Brain — interactive radial CRM for financial planners. Visualise every client's assets, goals, super, insurance and tasks in a live mind map.">
+<meta name="keywords" content="financial planning, CRM, mind map, xplan, adviser, client management, fintech, Australia">
+<meta property="og:title" content="FinPlan Brain — Financial Planner CRM">
+<meta property="og:description" content="Click any client node to explore their full financial picture. Open source, single-file, zero dependencies.">
+<meta property="og:type" content="website">
+<title>FinPlan Brain — Apex Financial Planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+:root {
+  --sw: 242px; --dw: 312px; --th: 44px; --bh: 40px;
+  --bg: #fff; --sbg: #f9fafb; --border: #e5e7eb; --border2: #f3f4f6;
+  --t1: #0f172a; --t2: #64748b; --t3: #94a3b8;
+  --acc: #6366f1; --acc-bg: #eef2ff; --acc-hover: #4f46e5;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+}
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--t1); display: flex; height: 100vh; overflow: hidden; font-size: 13px; }
+
+/* ── SVG ANIMATION SYSTEM ── */
+.node-g {
+  transform-box: fill-box;
+  transform-origin: center center;
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity   0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    filter    0.22s ease;
+  will-change: transform, opacity;
+  cursor: pointer;
+}
+@keyframes nodeIn {
+  0%   { transform: scale(0.3); opacity: 0; }
+  60%  { transform: scale(1.08); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+.node-g.entering { animation: nodeIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.node-g.hovered  { transform: scale(1.38); z-index: 10; }
+.node-g.selected { transform: scale(1.22); }
+.node-g.faded    { opacity: 0.07; pointer-events: none; }
+.node-g.dim      { opacity: 0.12; }
+
+.conn-line { transition: opacity 0.28s ease, stroke-width 0.18s ease; opacity: 0; }
+.conn-line.revealed  { opacity: 0.72; }
+.conn-line.highlight { stroke-width: 2px !important; opacity: 0.92 !important; }
+.conn-line.faded     { opacity: 0 !important; }
+.conn-line.dim       { opacity: 0 !important; }
+
+/* Ring 3/4 nodes hidden until a client is clicked */
+.node-g.deep-hidden  { opacity: 0 !important; pointer-events: none !important; animation: none !important; }
+
+/* ── SIDEBAR ── */
+.sb {
+  width: var(--sw); min-width: var(--sw); background: var(--sbg);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.sb-brand { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+.sb-brand .app-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; letter-spacing: -0.01em; }
+.brand-icon { width: 22px; height: 22px; background: linear-gradient(135deg,#818cf8,#6366f1); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 800; flex-shrink: 0; box-shadow: 0 1px 4px #6366f155; }
+.sb-brand .practice { font-size: 11px; color: var(--t2); margin-top: 3px; padding-left: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-search { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.sb-search .sw { position: relative; }
+.sb-search input { width: 100%; padding: 5px 8px 5px 26px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: #fff; color: var(--t1); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+.sb-search input:focus { border-color: var(--acc); box-shadow: 0 0 0 3px #6366f122; }
+.si { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--t3); font-size: 11px; pointer-events: none; }
+.sb-nav { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; color: var(--t2); font-size: 12.5px; transition: background 0.12s, color 0.12s; user-select: none; }
+.nav-item:hover { background: rgba(0,0,0,.04); }
+.nav-item.active { background: var(--acc-bg); color: var(--acc); font-weight: 500; }
+.nav-item .ni { width: 15px; text-align: center; font-size: 13px; }
+.nav-item .nb { margin-left: auto; background: #ef4444; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 10px; }
+.sb-sec { padding: 10px 12px 4px; }
+.sec-hd { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; color: var(--t3); text-transform: uppercase; margin-bottom: 3px; padding-left: 4px; }
+.fi { display: flex; align-items: center; gap: 7px; padding: 4px 8px; border-radius: 5px; cursor: pointer; transition: background 0.1s; user-select: none; }
+.fi:hover { background: rgba(0,0,0,.03); }
+.fi.active { background: rgba(99,102,241,.09); }
+.fd { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fl { flex: 1; font-size: 12px; color: var(--t1); }
+.fc { font-size: 11px; color: var(--t3); font-variant-numeric: tabular-nums; }
+.sb-footer { margin-top: auto; padding: 10px 12px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.ua { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#818cf8,#6366f1); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.un { font-size: 12px; font-weight: 500; }
+.ur { font-size: 11px; color: var(--t3); }
+
+/* ── STATUS LEGEND ── */
+.status-legend { display: flex; gap: 10px; padding: 6px 12px 8px; flex-wrap: wrap; }
+.sl-item { display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--t2); }
+.sl-ring { width: 12px; height: 12px; border-radius: 50%; border-width: 2.5px; border-style: solid; background: transparent; }
+
+/* ── MAIN ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.topbar { height: var(--th); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; background: rgba(255,255,255,.88); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.bc { font-size: 12.5px; color: var(--t2); display: flex; align-items: center; gap: 5px; }
+.bc .cur { color: var(--t1); font-weight: 500; }
+.bc .sep { color: var(--t3); }
+.tb-stats { margin-left: auto; display: flex; gap: 14px; font-size: 11.5px; color: var(--t3); }
+.tb-stats strong { color: var(--t1); font-weight: 600; }
+.tb-actions { display: flex; gap: 5px; }
+.btn { padding: 4px 11px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--t1); transition: background 0.12s, box-shadow 0.12s, transform 0.1s; user-select: none; }
+.btn:hover { background: #f8fafc; box-shadow: 0 1px 4px rgba(0,0,0,.08); transform: translateY(-0.5px); }
+.btn:active { transform: translateY(0); }
+.btn.primary { background: linear-gradient(135deg,#818cf8,#6366f1); color: #fff; border-color: transparent; box-shadow: 0 1px 6px #6366f133; }
+.btn.primary:hover { background: linear-gradient(135deg,#6366f1,#4f46e5); box-shadow: 0 2px 10px #6366f144; }
+
+.graph-area { flex: 1; position: relative; overflow: hidden; background: #fafbff; }
+#mainSvg { width: 100%; height: 100%; cursor: grab; display: block; }
+#mainSvg.dragging { cursor: grabbing; }
+
+/* ── BOTTOM TABS ── */
+.bottom-tabs { height: var(--bh); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; gap: 3px; flex-shrink: 0; background: rgba(255,255,255,.92); backdrop-filter: blur(6px); }
+.tab { padding: 4px 13px; border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--t2); user-select: none; transition: background 0.12s, color 0.12s; }
+.tab:hover { background: var(--border2); }
+.tab.active { background: var(--acc-bg); color: var(--acc); font-weight: 500; }
+
+/* ── DETAIL PANEL ── */
+.dp { width: 0; min-width: 0; background: rgba(255,255,255,.96); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-left: 1px solid rgba(0,0,0,.06); overflow: hidden; transition: width 0.3s cubic-bezier(0.4,0,0.2,1), min-width 0.3s cubic-bezier(0.4,0,0.2,1); display: flex; flex-direction: column; flex-shrink: 0; box-shadow: -4px 0 24px rgba(0,0,0,.05); }
+.dp.open { width: var(--dw); min-width: var(--dw); }
+.dp-head { padding: 14px 14px 12px; border-bottom: 1px solid var(--border2); display: flex; align-items: flex-start; gap: 10px; flex-shrink: 0; }
+.dp-av { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.dp-ti { flex: 1; min-width: 0; }
+.dp-nm { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.dp-sb { font-size: 11.5px; color: var(--t2); margin-top: 2px; }
+.dp-cl { cursor: pointer; color: var(--t3); padding: 3px 5px; border-radius: 5px; font-size: 18px; line-height: 1; transition: color 0.1s, background 0.1s; }
+.dp-cl:hover { color: var(--t1); background: var(--border2); }
+.dp-body { padding: 12px; flex: 1; overflow-y: auto; scrollbar-width: thin; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 14px; }
+.mc { background: var(--sbg); border-radius: 8px; padding: 9px 10px; border: 1px solid var(--border2); }
+.ml { font-size: 10px; color: var(--t3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.mv { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.mv.g { color: #16a34a; } .mv.a { color: #d97706; } .mv.r { color: #dc2626; }
+.ds { margin-bottom: 13px; }
+.dsh { font-size: 10.5px; font-weight: 700; color: var(--t3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1px solid var(--border2); }
+.dli { display: flex; align-items: center; gap: 7px; padding: 5px 0; border-bottom: 1px solid var(--border2); transition: background 0.1s; border-radius: 4px; padding-left: 4px; padding-right: 4px; }
+.dli:last-child { border-bottom: none; }
+.dli:hover { background: var(--sbg); }
+.dlb { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.dlt { flex: 1; font-size: 12px; }
+.dlm { font-size: 11px; color: var(--t3); }
+.badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 10px; font-size: 10.5px; font-weight: 500; }
+.b-amber { background: #fef3c7; color: #92400e; }
+.b-green { background: #d1fae5; color: #065f46; }
+.b-indigo { background: #e0e7ff; color: #3730a3; }
+.b-red { background: #fee2e2; color: #991b1b; }
+.b-blue { background: #dbeafe; color: #1e40af; }
+.dp-mm-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px; border: 1.5px solid #e0e7ff; border-radius: 8px; color: var(--acc); font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 6px; background: var(--acc-bg); transition: background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s; }
+.dp-mm-btn:hover { background: #e0e7ff; border-color: #a5b4fc; transform: translateY(-1px); box-shadow: 0 2px 8px #6366f122; }
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position: fixed; pointer-events: none;
+  background: rgba(15,23,42,.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  color: #f1f5f9; font-size: 11.5px; padding: 6px 10px; border-radius: 7px;
+  z-index: 200; display: none; white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  border: 1px solid rgba(255,255,255,.1);
+  transition: opacity 0.15s ease;
+}
+
+/* ── PRACTICE STATS CARD ── */
+.prac-stats { margin: 8px 12px; background: linear-gradient(135deg,#1e293b,#334155); border-radius: 10px; padding: 11px 13px; color: #fff; }
+.prac-stats .ps-name { font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
+.prac-stats .ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.prac-stats .ps-item { }
+.prac-stats .ps-val { font-size: 18px; font-weight: 800; letter-spacing: -0.03em; }
+.prac-stats .ps-lbl { font-size: 9.5px; opacity: 0.6; margin-top: 1px; }
+.prac-stats .ps-val.warn { color: #fbbf24; }
+.prac-stats .ps-val.danger { color: #f87171; }
+
+/* ── ADVISOR PHOTO STRIP ── */
+.adv-cards { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+.adv-card { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; border: 1px solid transparent; }
+.adv-card:hover { background: rgba(0,0,0,.04); }
+.adv-card.active { background: rgba(99,102,241,.08); border-color: rgba(99,102,241,.2); }
+.adv-photo { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.adv-photo-fb { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.adv-info { flex: 1; min-width: 0; }
+.adv-info .ai-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adv-info .ai-title { font-size: 10.5px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adv-aum { font-size: 11px; font-weight: 600; color: var(--t2); white-space: nowrap; }
+
+/* ── GRAPH OVERLAYS ── */
+.graph-legend { position: absolute; bottom: 52px; left: 12px; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 10.5px; pointer-events: none; }
+.gl-title { font-size: 9px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--t3); margin-bottom: 5px; }
+.gl-row { display: flex; align-items: center; gap: 5px; color: var(--t2); margin-bottom: 3px; }
+.gl-row:last-child { margin-bottom: 0; }
+.gl-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.gl-ring { width: 9px; height: 9px; border-radius: 50%; border: 2px solid; flex-shrink: 0; }
+.gl-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.canvas-hint { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); background: rgba(15,23,42,.75); backdrop-filter: blur(8px); color: rgba(255,255,255,.85); font-size: 11.5px; padding: 7px 14px; border-radius: 20px; pointer-events: none; transition: opacity 0.4s ease; white-space: nowrap; }
+
+/* ── GITHUB LINK ── */
+.gh-btn { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 12px; color: var(--t2); border: 1px solid var(--border); background: #fff; text-decoration: none; cursor: pointer; transition: background 0.12s, color 0.12s; flex-shrink: 0; }
+.gh-btn:hover { background: var(--border2); color: var(--t1); }
+.gh-btn svg { flex-shrink: 0; }
+
+/* ── DETAIL PANEL: ACTION BUTTONS ── */
+.dp-actions { display: flex; gap: 6px; margin-bottom: 14px; }
+.dp-act { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; background: var(--sbg); border: 1px solid var(--border2); border-radius: 8px; cursor: pointer; transition: background 0.12s, transform 0.1s; }
+.dp-act:hover { background: var(--border2); transform: translateY(-1px); }
+.dp-act .da-icon { font-size: 14px; }
+.dp-act .da-lbl { font-size: 9.5px; color: var(--t2); font-weight: 500; }
+
+/* ── ADVISOR DETAIL PHOTO ── */
+.dp-av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.dp-av-wrap { position: relative; flex-shrink: 0; }
+.dp-av-wrap .status-dot { position: absolute; bottom: 1px; right: 1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; }
+
+/* ── URGENT PULSE ── */
+@keyframes urgentPulse {
+  0%, 100% { stroke-opacity: 1; }
+  50%       { stroke-opacity: 0.3; }
+}
+.urgent-ring { animation: urgentPulse 2.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.urgent-pulse { animation: urgentPulse 1.8s ease-in-out infinite; }
+
+/* ── CLIENT LAST-NAME LABEL — appears on group hover ── */
+.client-label { transition: opacity 0.15s ease; }
+.node-group:hover .client-label { opacity: 1 !important; }
+.node-group.selected .client-label { opacity: 1 !important; }
+
+/* ── CLIENT MIND MAP ── */
+.client-view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.client-view.visible { display: flex; }
+.cm-header { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: var(--th); border-bottom: 1px solid var(--border); flex-shrink: 0; background: rgba(255,255,255,.88); backdrop-filter: blur(8px); }
+.cm-back { cursor: pointer; display: flex; align-items: center; gap: 5px; color: var(--acc); font-size: 12.5px; font-weight: 500; padding: 4px 8px; border-radius: 6px; transition: background 0.12s; }
+.cm-back:hover { background: var(--acc-bg); }
+.cm-title { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+#clientSvg { width: 100%; flex: 1; display: block; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sb">
+  <div class="sb-brand">
+    <div class="app-name"><div class="brand-icon">FP</div>FinPlan Brain</div>
+    <div class="practice">Apex Financial Planning</div>
+  </div>
+  <div class="sb-search"><div class="sw"><span class="si">⌕</span><input type="text" placeholder="Search clients, goals…" id="searchInput"></div></div>
+  <div class="sb-nav">
+    <div class="nav-item" id="navDash" onclick="showView('dashboardView')"><span class="ni">⊞</span> Dashboard</div>
+    <div class="nav-item" id="navInbox" onclick="showView('inboxView')"><span class="ni">✉</span> Inbox <span class="nb">4</span></div>
+    <div class="nav-item active" id="navBrain" onclick="showView('practiceView')"><span class="ni">◎</span> Client Brain</div>
+    <div class="nav-item" id="navConductor" onclick="showView('conductorView')"><span class="ni">≡</span> Conductor</div>
+    <div class="nav-item" id="navTasks" onclick="showView('tasksView')"><span class="ni">☑</span> Tasks</div>
+  </div>
+
+  <!-- Practice stats card -->
+  <div class="prac-stats">
+    <div class="ps-name">Practice Overview</div>
+    <div class="ps-grid">
+      <div class="ps-item"><div class="ps-val" id="sb-aum">—</div><div class="ps-lbl">Total AUM</div></div>
+      <div class="ps-item"><div class="ps-val" id="sb-clients">—</div><div class="ps-lbl">Active Clients</div></div>
+      <div class="ps-item"><div class="ps-val warn" id="sb-reviews">—</div><div class="ps-lbl">Reviews Due</div></div>
+      <div class="ps-item"><div class="ps-val danger" id="sb-urgent">—</div><div class="ps-lbl">Urgent Actions</div></div>
+    </div>
+  </div>
+
+  <!-- Advisor photo strip -->
+  <div class="sb-sec" style="padding-bottom:2px">
+    <div class="sec-hd">Advisers</div>
+  </div>
+  <div class="adv-cards" id="advCards"></div>
+
+  <!-- Status legend -->
+  <div class="sb-sec" style="padding-bottom:2px">
+    <div class="sec-hd">Client Status Ring</div>
+    <div class="status-legend">
+      <div class="sl-item"><div class="sl-ring" style="border-color:#22c55e"></div>Active</div>
+      <div class="sl-item"><div class="sl-ring" style="border-color:#f59e0b"></div>Review Due</div>
+      <div class="sl-item"><div class="sl-ring" style="border-color:#ef4444"></div>Urgent</div>
+    </div>
+  </div>
+
+  <div class="sb-sec">
+    <div class="sec-hd">By Category</div>
+    <div class="fi active" data-filter="all"><div class="fd" style="background:#6366f1"></div><span class="fl">All</span><span class="fc" id="cnt-all">0</span></div>
+    <div class="fi" data-filter="advisor"><div class="fd" style="background:#3b82f6"></div><span class="fl">Advisors</span><span class="fc" id="cnt-advisor">3</span></div>
+    <div class="fi" data-filter="client"><div class="fd" style="background:#f59e0b"></div><span class="fl">Clients</span><span class="fc" id="cnt-client">12</span></div>
+    <div class="fi" data-filter="super"><div class="fd" style="background:#22c55e"></div><span class="fl">Superannuation</span><span class="fc" id="cnt-super">0</span></div>
+    <div class="fi" data-filter="investments"><div class="fd" style="background:#3b82f6"></div><span class="fl">Investments</span><span class="fc" id="cnt-investments">0</span></div>
+    <div class="fi" data-filter="property"><div class="fd" style="background:#8b5cf6"></div><span class="fl">Property</span><span class="fc" id="cnt-property">0</span></div>
+    <div class="fi" data-filter="entities"><div class="fd" style="background:#fb923c"></div><span class="fl">Entities</span><span class="fc" id="cnt-entity">0</span></div>
+    <div class="fi" data-filter="insurance"><div class="fd" style="background:#f87171"></div><span class="fl">Insurance</span><span class="fc" id="cnt-insurance">0</span></div>
+    <div class="fi" data-filter="goals"><div class="fd" style="background:#fbbf24"></div><span class="fl">Goals</span><span class="fc" id="cnt-goal">0</span></div>
+    <div class="fi" data-filter="tasks"><div class="fd" style="background:#c084fc"></div><span class="fl">Tasks & Reviews</span><span class="fc" id="cnt-task">0</span></div>
+  </div>
+  <div class="sb-sec">
+    <div class="sec-hd">By Client Segment</div>
+    <div class="fi" data-filter="seg-HNW"><div class="fd" style="background:#f59e0b"></div><span class="fl">High Net Worth</span><span class="fc">4</span></div>
+    <div class="fi" data-filter="seg-MA"><div class="fd" style="background:#10b981"></div><span class="fl">Mass Affluent</span><span class="fc">5</span></div>
+    <div class="fi" data-filter="seg-ACC"><div class="fd" style="background:#818cf8"></div><span class="fl">Accumulator</span><span class="fc">3</span></div>
+  </div>
+  <div class="sb-sec">
+    <div class="sec-hd">By Advisor</div>
+    <div class="fi" data-filter="adv-a1"><div class="fd" style="background:#3b82f6"></div><span class="fl">Sarah Chen</span><span class="fc">4</span></div>
+    <div class="fi" data-filter="adv-a2"><div class="fd" style="background:#6366f1"></div><span class="fl">Marcus Webb</span><span class="fc">4</span></div>
+    <div class="fi" data-filter="adv-a3"><div class="fd" style="background:#8b5cf6"></div><span class="fl">Emma Torres</span><span class="fc">4</span></div>
+  </div>
+  <div class="sb-sec" style="margin-bottom:8px">
+    <div class="sec-hd">By Status</div>
+    <div class="fi" data-filter="status-active"><div class="fd" style="background:#22c55e"></div><span class="fl">Active</span><span class="fc">8</span></div>
+    <div class="fi" data-filter="status-review"><div class="fd" style="background:#f59e0b"></div><span class="fl">Review Due</span><span class="fc">3</span></div>
+    <div class="fi" data-filter="status-risk"><div class="fd" style="background:#ef4444"></div><span class="fl">Needs Attention</span><span class="fc">1</span></div>
+  </div>
+  <div class="sb-footer">
+    <div class="ua">BF</div>
+    <div style="flex:1;min-width:0"><div class="un">Benjamin Fowler</div><div class="ur">Head of Advice</div></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="mainArea">
+  <div id="practiceView" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur" id="topBreadcrumb">Client Brain</span></div>
+      <div class="tb-stats">
+        <span><strong id="stat-clients">—</strong> clients</span>
+        <span><strong id="stat-reviews" style="color:#d97706">—</strong> reviews</span>
+        <span><strong id="stat-urgent" style="color:#dc2626">—</strong> urgent</span>
+        <span><strong id="stat-aum">—</strong> AUM</span>
+      </div>
+      <div class="tb-actions">
+        <div class="btn primary">+ Add Client</div>
+      </div>
+    </div>
+    <div class="graph-area">
+      <svg id="mainSvg"></svg>
+      <div class="graph-legend">
+        <div class="gl-title">Client Segment</div>
+        <div class="gl-row"><div class="gl-dot" style="background:#f59e0b"></div>High Net Worth</div>
+        <div class="gl-row"><div class="gl-dot" style="background:#10b981"></div>Mass Affluent</div>
+        <div class="gl-row"><div class="gl-dot" style="background:#818cf8"></div>Accumulator</div>
+        <div class="gl-sep"></div>
+        <div class="gl-title">Status Ring</div>
+        <div class="gl-row"><div class="gl-ring" style="border-color:#22c55e"></div>Active</div>
+        <div class="gl-row"><div class="gl-ring" style="border-color:#f59e0b"></div>Review Due</div>
+        <div class="gl-row"><div class="gl-ring" style="border-color:#ef4444"></div>Urgent</div>
+      </div>
+      <div class="canvas-hint" id="canvasHint">✦ Click any client to explore their financial picture</div>
+      <button id="resetBtn" onclick="closeDetail();nodeMap.forEach(({data,el})=>{el.classList.remove('dim');if(data.ring>=3)el.classList.add('deep-hidden');});connMap.forEach(({data,el})=>{el.classList.remove('dim','revealed');el.style.stroke=data.color;});applyFilter(activeFilter);resetZoom();" style="
+        position:absolute;bottom:12px;right:12px;
+        padding:6px 13px;border-radius:7px;border:1px solid #e0e7ff;
+        background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);
+        color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;
+        box-shadow:0 2px 10px rgba(0,0,0,0.1);
+        opacity:0;pointer-events:none;
+        transition:opacity 0.2s ease,transform 0.15s ease;
+        font-family:-apple-system,sans-serif;
+      " onmouseenter="this.style.transform='translateY(-1px)'" onmouseleave="this.style.transform=''">
+        ⊙ Reset View
+      </button>
+    </div>
+    <div class="bottom-tabs">
+      <div class="tab active" id="tabBrain" onclick="showBrainView()">◎ Brain View</div>
+      <div class="tab">≡ List View</div>
+      <div class="tab" id="tabReviews" onclick="showComplianceDashboard()">📅 Reviews</div>
+      <div class="tab">📊 Reports</div>
+    </div>
+  </div>
+  <div id="clientView" class="client-view">
+    <div class="cm-header">
+      <div class="cm-back" id="cmBack">← Back</div>
+      <div class="cm-title" id="cmTitle">Client Mind Map</div>
+      <span class="badge b-amber" id="cmBadge"></span>
+    </div>
+    <svg id="clientSvg"></svg>
+    <div class="bottom-tabs">
+      <div class="tab" id="cmBackTab">◎ Brain View</div>
+      <div class="tab active">⬡ Mind Map</div>
+      <div class="tab">📋 Strategy</div>
+    </div>
+  </div>
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboardView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur">Dashboard</span></div>
+      <div class="tb-stats"><span><strong id="dash-clients">—</strong> clients</span><span><strong id="dash-urgent" style="color:#dc2626">—</strong> urgent</span><span><strong id="dash-aum" style="color:#16a34a">—</strong> AUM</span></div>
+      <div class="tb-actions"><div class="btn">↓ Export</div></div>
+    </div>
+    <div id="dashBody" style="flex:1;overflow-y:auto;padding:16px;background:#fafbff"></div>
+    <div class="bottom-tabs">
+      <div class="tab" onclick="showView('practiceView')">◎ Brain View</div>
+      <div class="tab active">⊞ Dashboard</div>
+      <div class="tab" onclick="showView('complianceView')">📅 Reviews</div>
+      <div class="tab" onclick="showView('tasksView')">☑ Tasks</div>
+    </div>
+  </div>
+  <!-- INBOX VIEW -->
+  <div id="inboxView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur">Inbox</span></div>
+      <div class="tb-stats"><span><strong>4</strong> unread notifications</span></div>
+      <div class="tb-actions"><div class="btn">Mark All Read</div></div>
+    </div>
+    <div id="inboxBody" style="flex:1;overflow-y:auto;padding:16px;background:#fafbff"></div>
+    <div class="bottom-tabs">
+      <div class="tab" onclick="showView('practiceView')">◎ Brain View</div>
+      <div class="tab active">✉ Inbox</div>
+      <div class="tab" onclick="showView('complianceView')">📅 Reviews</div>
+      <div class="tab" onclick="showView('tasksView')">☑ Tasks</div>
+    </div>
+  </div>
+  <!-- CONDUCTOR VIEW -->
+  <div id="conductorView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur">Conductor</span></div>
+      <div class="tb-stats"><span>Advice workflow · SOA/ROA pipeline</span></div>
+      <div class="tb-actions"><div class="btn primary">+ New Task</div></div>
+    </div>
+    <div id="conductorBody" style="flex:1;overflow-y:auto;padding:16px;background:#fafbff"></div>
+    <div class="bottom-tabs">
+      <div class="tab" onclick="showView('practiceView')">◎ Brain View</div>
+      <div class="tab" onclick="showView('tasksView')">☑ Tasks</div>
+      <div class="tab active">≡ Conductor</div>
+      <div class="tab" onclick="showView('complianceView')">📅 Reviews</div>
+    </div>
+  </div>
+  <!-- TASKS VIEW -->
+  <div id="tasksView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur">Tasks</span></div>
+      <div class="tb-stats"><span><strong>20</strong> tasks</span><span><strong style="color:#dc2626">2</strong> overdue</span><span><strong style="color:#6366f1">4</strong> in progress</span></div>
+      <div class="tb-actions"><div class="btn primary">+ Add Task</div></div>
+    </div>
+    <div id="tasksBody" style="flex:1;overflow-y:auto;padding:16px;background:#fafbff"></div>
+    <div class="bottom-tabs">
+      <div class="tab" onclick="showView('practiceView')">◎ Brain View</div>
+      <div class="tab active">☑ Tasks</div>
+      <div class="tab" onclick="showView('conductorView')">≡ Conductor</div>
+      <div class="tab" onclick="showView('complianceView')">📅 Reviews</div>
+    </div>
+  </div>
+  <!-- COMPLIANCE VIEW (moved inside mainArea) -->
+  <div id="complianceView" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="topbar">
+      <div class="bc"><span>Apex Financial</span><span class="sep">›</span><span class="cur">Compliance &amp; Reviews</span></div>
+      <div class="tb-stats"><span id="cv-urgent"></span><span id="cv-soa"></span><span id="cv-reviews"></span></div>
+      <div class="tb-actions"><div class="btn">↓ Export</div></div>
+    </div>
+    <div id="complianceBody" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start;background:#fafbff"></div>
+    <div class="bottom-tabs">
+      <div class="tab" onclick="showView('practiceView')">◎ Brain View</div>
+      <div class="tab" onclick="showView('tasksView')">☑ Tasks</div>
+      <div class="tab active">📅 Reviews</div>
+      <div class="tab" onclick="showView('dashboardView')">⊞ Dashboard</div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="dp" id="detailPanel">
+  <div class="dp-head">
+    <div class="dp-av" id="dpAvatar"></div>
+    <div class="dp-ti"><div class="dp-nm" id="dpName"></div><div class="dp-sb" id="dpSub"></div></div>
+    <div class="dp-cl" id="dpClose">×</div>
+  </div>
+  <div class="dp-body" id="dpBody"></div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CATEGORY META  (hub nodes between client & leaves)
+// ═══════════════════════════════════════════════════
+const CATEGORY_META = {
+  super:       {label:'Superannuation', short:'SUPER',  color:'#22c55e'},
+  investments: {label:'Investments',    short:'INV',    color:'#3b82f6'},
+  property:    {label:'Property',       short:'PROP',   color:'#8b5cf6'},
+  entities:    {label:'Entities',       short:'ENT',    color:'#fb923c'},
+  insurance:   {label:'Insurance',      short:'INS',    color:'#f87171'},
+  goals:       {label:'Goals',          short:'GOALS',  color:'#fbbf24'},
+  tasks:       {label:'Tasks',          short:'TASKS',  color:'#c084fc'},
+};
+
+// Status ring colours
+const STATUS_COLOR = {active:'#22c55e', review:'#f59e0b', risk:'#ef4444'};
+
+// Placeholder advisor photos (replace with real headshots)
+const ADVISOR_PHOTOS = {
+  a1: 'https://randomuser.me/api/portraits/women/44.jpg',
+  a2: 'https://randomuser.me/api/portraits/men/32.jpg',
+  a3: 'https://randomuser.me/api/portraits/women/68.jpg',
+};
+
+// ═══════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════
+const ADVISORS=[
+  {id:'a1',name:'Sarah Chen',initials:'SC',title:'Senior Financial Planner',color:'#3b82f6',arcIdx:0},
+  {id:'a2',name:'Marcus Webb',initials:'MW',title:'Financial Planner',color:'#6366f1',arcIdx:1},
+  {id:'a3',name:'Emma Torres',initials:'ET',title:'Associate Planner',color:'#8b5cf6',arcIdx:2},
+];
+// ─── Procedural data generator — 45 clients per adviser ───
+const CLIENTS=[], PORTFOLIOS=[], INSURANCE=[], TASKS=[], GOALS=[], PROPERTIES=[], ENTITIES=[];
+(function genData(){
+  const rng=seed=>{let s=(seed^0xdeadbeef)*0x9e3779b9|0;return()=>{s^=s<<13;s^=s>>7;s^=s<<17;return(s>>>0)/0x100000000;};};
+  const SN=['Morrison','Hamilton','Nguyen','Williams','Anderson','Mendez','Chang','Brown','Foster','Kim',
+    'Green','Wilson','Thompson','Walker','White','Taylor','Martin','Jackson','Harris','Clark','Lewis',
+    'Robinson','Lee','Hall','Young','Allen','King','Wright','Scott','Torres','Adams','Baker','Nelson',
+    'Carter','Mitchell','Roberts','Turner','Phillips','Campbell','Parker','Evans','Edwards','Collins',
+    'Stewart','Rogers','Reed','Cook','Morgan','Bell','Murphy','Bailey','Rivera','Cooper','Richardson',
+    'Cox','Howard','Ward','Peterson','Ramirez','Watson','Brooks','Kelly','Sanders','Price','Bennett',
+    'Wood','Barnes','Ross','Henderson','Coleman','Jenkins','Perry','Powell','Long','Hughes','Flores',
+    'Washington','Butler','Simmons','Bryant','Alexander','Russell','Diaz','Hayes','Myers','Graham',
+    'Sullivan','Wallace','Woods','Cole','West','Jordan','Owens','Fisher','Ellis','Harrison','Gibson',
+    'McDonald','Cruz','Marshall','Ortiz','Gomez','Murray','Freeman','Lawrence','Mason','Webb','Dixon',
+    'Kennedy','Ryan','Burns','Shaw','Rice','Bowman','Hughes','Hicks','Patel','Kumar','Singh','Chen'];
+  const FM=['James','Robert','Michael','William','David','Richard','Joseph','Thomas','Christopher',
+    'Daniel','Matthew','Anthony','Mark','Steven','Paul','Andrew','Joshua','Kevin','Brian','George',
+    'Timothy','Edward','Jason','Ryan','Jacob','Nicholas','Eric','Jonathan','Stephen','Justin','Scott',
+    'Benjamin','Samuel','Aaron','Tyler','Nathan','Adam','Henry','Zachary','Peter','Kyle','Ethan',
+    'Luke','Owen','Liam','Logan','Mason','Jack','Oliver','Aiden','Lucas','Connor','Hunter','Kai',
+    'Alex','Jordan','Dylan','Sean','Patrick','Drew','Miles','Finn','Leo','Theo','Hamish','Angus'];
+  const FF=['Mary','Patricia','Jennifer','Linda','Barbara','Elizabeth','Susan','Jessica','Sarah',
+    'Karen','Lisa','Nancy','Betty','Margaret','Sandra','Ashley','Dorothy','Kimberly','Emily','Donna',
+    'Michelle','Carol','Amanda','Melissa','Stephanie','Rebecca','Sharon','Laura','Cynthia','Amy',
+    'Angela','Anna','Brenda','Emma','Nicole','Helen','Samantha','Katherine','Christine','Rachel',
+    'Carolyn','Janet','Maria','Heather','Julie','Victoria','Kelly','Christina','Lauren','Joan',
+    'Evelyn','Olivia','Megan','Andrea','Hannah','Grace','Chloe','Sophie','Ava','Isabella','Mia',
+    'Charlotte','Amelia','Zoe','Natalie','Brooke','Tara','Jade','Priya','Aisha','Wei','Mei'];
+  const SF=['AustralianSuper','REST Super','Aware Super','UniSuper','Hostplus','HESTA',
+    'Sunsuper','Cbus','MLC Super','AMP Super','Mercer Super','BT Super','CFS FirstChoice',
+    'GESB Super','TelstraSuper','AustralianSuper','REST Super','Hostplus','Aware Super'];
+  const INS=['AIA','TAL','Zurich','MLC','Clearview','OnePath','MetLife','BT Insurance','AIA','TAL','AIA','Zurich'];
+  const SUB=['Mosman NSW','Chatswood NSW','Parramatta NSW','Bondi Beach NSW','Surry Hills NSW',
+    'Manly NSW','Paddington NSW','Newtown NSW','Balmain NSW','Lane Cove NSW','Killara NSW',
+    'Toorak VIC','South Yarra VIC','Brighton VIC','Hawthorn VIC','Carlton VIC','Fitzroy VIC',
+    'St Kilda VIC','Richmond VIC','Camberwell VIC','Kew VIC','Malvern VIC','Balwyn VIC',
+    'New Farm QLD','Paddington QLD','Toowong QLD','Bulimba QLD','Ascot QLD','Teneriffe QLD',
+    'Cottesloe WA','Claremont WA','Subiaco WA','Mount Lawley WA','Nedlands WA',
+    'Unley SA','Burnside SA','Norwood SA','Prospect SA','Fitzroy SA'];
+  const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const RISKS=['Conservative','Moderately Conservative','Moderate','Moderately Aggressive','High Growth'];
+  const GT=['Retirement Income','Buy First Home','Pay Off Mortgage','Education Fund','Build Wealth',
+    'Emergency Fund','Business Succession','Investment Property','Travel Fund','Early Retirement',
+    'SMSF Establishment','Debt Reduction','Age Pension Strategy','Transition to Retirement'];
+  const TT=['Annual Review','SOA','ROA','Action','Strategy','SMSF Audit','Legal'];
+  let pi=1,ii=1,ti=1,gi=1,pri=1;
+
+  const advDefs=[
+    {id:'a1',preset:[
+      {id:'c1', name:'Morrison Family',   ini:'MF',seg:'HNW',aum:2400000,risk:2,status:'active',dob:'1968 / 1965',lastRev:'Mar 2025',revD:'Mar 2026',consent:true, soa:'Current',     feeT:'Ongoing',feeA:'$8,500/yr', cl:false,notes:'Robert & Linda. SMSF + family trust. CGT strategy active.'},
+      {id:'c2', name:'Patricia Hamilton', ini:'PH',seg:'HNW',aum:1900000,risk:0,status:'active',dob:'1952',        lastRev:'Apr 2025',revD:'Apr 2026',consent:true, soa:'Current',     feeT:'Ongoing',feeA:'$7,200/yr', cl:true, notes:'Widowed. Age Pension eligible. Estate planning + drawdown. TBC approaching cap.'},
+      {id:'c3', name:'Nguyen Family',     ini:'NF',seg:'MA', aum:680000, risk:3,status:'review',dob:'1985 / 1987', lastRev:'Jun 2025',revD:'Jun 2026',consent:false,soa:'ROA Due',    feeT:'Ongoing',feeA:'$4,800/yr', cl:false,notes:'James & Priya. Salary sacrifice CC review overdue. Annual consent outstanding.'},
+      {id:'c4', name:'Sophie Williams',   ini:'SW',seg:'ACC',aum:175000, risk:4,status:'active',dob:'1999',        lastRev:'Sep 2025',revD:'Sep 2026',consent:true, soa:'Current',     feeT:'Fixed',  feeA:'$2,200/yr', cl:false,notes:'26yo. FHSS tracking to $50K release. SOA in progress.'},
+    ]},
+    {id:'a2',preset:[
+      {id:'c5', name:'Anderson Family',   ini:'AF',seg:'HNW',aum:3100000,risk:1,status:'active',dob:'1962 / 1964', lastRev:'Feb 2025',revD:'Feb 2026',consent:true, soa:'SOA Due',    feeT:'Ongoing',feeA:'$14,500/yr',cl:false,notes:'Business owners. CGT + succession planning for 2027 sale. New SOA required.'},
+      {id:'c6', name:'Carlos Mendez',     ini:'CM',seg:'MA', aum:520000, risk:2,status:'active',dob:'1980 / 1982', lastRev:'Jul 2025',revD:'Jul 2026',consent:true, soa:'Current',     feeT:'Ongoing',feeA:'$3,900/yr', cl:false,notes:'Carlos & Maria. Dual income. CC strategy + non-concessional top-up FY26.'},
+      {id:'c7', name:'Lisa Chang',        ini:'LC',seg:'MA', aum:440000, risk:3,status:'review',dob:'1988',        lastRev:'Jun 2025',revD:'Jun 2026',consent:false,soa:'ROA Due',    feeT:'Ongoing',feeA:'$3,400/yr', cl:false,notes:'UniSuper member. Property purchase mid-2026. ROA required for gearing strategy.'},
+      {id:'c8', name:'Aiden Brown',       ini:'AB',seg:'ACC',aum:95000,  risk:4,status:'risk',  dob:'1995',        lastRev:'Nov 2024',revD:'May 2026',consent:false,soa:'Overdue',    feeT:'Fixed',  feeA:'$1,800/yr', cl:false,notes:'High debt ratio. SOA and annual consent both overdue. Urgent.'},
+    ]},
+    {id:'a3',preset:[
+      {id:'c9', name:'Foster Family',     ini:'FF',seg:'MA', aum:820000, risk:3,status:'active',dob:'1975 / 1977', lastRev:'Aug 2025',revD:'Aug 2026',consent:true, soa:'Current',     feeT:'Ongoing',feeA:'$5,200/yr', cl:false,notes:'Tom & Kelly. 3 children. Education bond and IP strategy under review.'},
+      {id:'c10',name:'Daniel Kim',        ini:'DK',seg:'MA', aum:340000, risk:3,status:'active',dob:'1986',        lastRev:'Oct 2025',revD:'Oct 2026',consent:true, soa:'Current',     feeT:'Ongoing',feeA:'$3,100/yr', cl:false,notes:'IT professional. Negatively geared IP. Reviewing borrowing capacity.'},
+      {id:'c11',name:'Rachel Green',      ini:'RG',seg:'ACC',aum:220000, risk:3,status:'review',dob:'1991',        lastRev:'Jun 2025',revD:'Jun 2026',consent:false,soa:'ROA Due',    feeT:'Fixed',  feeA:'$2,500/yr', cl:false,notes:'Planning family. Parental leave income strategy + IP cover ROA pending.'},
+      {id:'c12',name:'Nathan Wilson',     ini:'NW',seg:'ACC',aum:110000, risk:4,status:'active',dob:'1997',        lastRev:'Nov 2025',revD:'Nov 2026',consent:true, soa:'Current',     feeT:'Fixed',  feeA:'$1,600/yr', cl:false,notes:'Early career. Credit card debt reduction and super consolidation.'},
+    ]},
+  ];
+
+  // Supporting data for the original 12
+  const origPortfolios=[
+    {id:'p_o1',name:'Morrison SMSF',client:'c1',ptype:'SMSF',value:1200000,color:'#15803d',perf:'+8.4%'},
+    {id:'p_o2',name:"Robert's Aware Super",client:'c1',ptype:'Super',value:580000,color:'#22c55e',perf:'+7.1%'},
+    {id:'p_o3',name:'Family Trust Portfolio',client:'c1',ptype:'Investment',value:620000,color:'#60a5fa',perf:'+11.2%'},
+    {id:'p_o4',name:'Hamilton SMSF',client:'c2',ptype:'SMSF',value:1100000,color:'#15803d',perf:'+6.8%'},
+    {id:'p_o5',name:'Cash & Term Deposits',client:'c2',ptype:'Investment',value:800000,color:'#93c5fd',perf:'+4.9%'},
+    {id:'p_o6',name:'James AustralianSuper',client:'c3',ptype:'Super',value:340000,color:'#22c55e',perf:'+9.3%'},
+    {id:'p_o7',name:'Priya REST Super',client:'c3',ptype:'Super',value:220000,color:'#4ade80',perf:'+8.7%'},
+    {id:'p_o8',name:'Sophie REST Super',client:'c4',ptype:'Super',value:145000,color:'#22c55e',perf:'+10.1%'},
+    {id:'p_o9',name:'Anderson SMSF',client:'c5',ptype:'SMSF',value:1800000,color:'#15803d',perf:'+9.7%'},
+    {id:'p_o10',name:"Anderson & Co Portfolio",client:'c5',ptype:'Investment',value:1300000,color:'#3b82f6',perf:'+12.4%'},
+    {id:'p_o11',name:'Carlos Aware Super',client:'c6',ptype:'Super',value:280000,color:'#22c55e',perf:'+7.8%'},
+    {id:'p_o12',name:'Maria AustralianSuper',client:'c6',ptype:'Super',value:155000,color:'#4ade80',perf:'+8.1%'},
+    {id:'p_o13',name:'Lisa UniSuper',client:'c7',ptype:'Super',value:380000,color:'#22c55e',perf:'+8.9%'},
+    {id:'p_o14',name:'Aiden ART Super',client:'c8',ptype:'Super',value:88000,color:'#22c55e',perf:'+9.4%'},
+    {id:'p_o15',name:'Tom Hostplus',client:'c9',ptype:'Super',value:410000,color:'#22c55e',perf:'+8.2%'},
+    {id:'p_o16',name:'Kelly QSuper',client:'c9',ptype:'Super',value:290000,color:'#4ade80',perf:'+7.6%'},
+    {id:'p_o17',name:'Daniel AustralianSuper',client:'c10',ptype:'Super',value:290000,color:'#22c55e',perf:'+8.5%'},
+    {id:'p_o18',name:'Rachel HESTA',client:'c11',ptype:'Super',value:195000,color:'#22c55e',perf:'+8.0%'},
+    {id:'p_o19',name:'Nathan REST Super',client:'c12',ptype:'Super',value:96000,color:'#22c55e',perf:'+9.6%'},
+  ];
+  const origEntities=[
+    {id:'e1',name:'Morrison Family Trust',client:'c1',etype:'Family Trust',color:'#fb923c'},
+    {id:'e2',name:'Hamilton Estate Trust',client:'c2',etype:'Estate Trust',color:'#fb923c'},
+    {id:'e3',name:"Anderson & Co Pty Ltd",client:'c5',etype:'Company',color:'#ea580c'},
+    {id:'e4',name:'Anderson Family Trust',client:'c5',etype:'Family Trust',color:'#fb923c'},
+    {id:'e5',name:'Foster Family Trust',client:'c9',etype:'Family Trust',color:'#fb923c'},
+  ];
+  const origInsurance=[
+    {id:'i_o1',name:'Robert — Life/TPD',client:'c1',itype:'Life',insurer:'AIA',cover:'$3,000,000',inSuper:false,color:'#f87171',premium:'$4,200/yr'},
+    {id:'i_o2',name:'Linda — Income Protection',client:'c1',itype:'IP',insurer:'TAL',cover:'$12,500/mo',inSuper:false,color:'#fca5a5',premium:'$3,100/yr'},
+    {id:'i_o3',name:'Patricia — Life/TPD',client:'c2',itype:'Life',insurer:'TAL',cover:'$2,000,000',inSuper:false,color:'#f87171',premium:'$3,600/yr'},
+    {id:'i_o4',name:'James — Life',client:'c3',itype:'Life',insurer:'Zurich',cover:'$1,500,000',inSuper:true,color:'#f87171',premium:'$3,800/yr'},
+    {id:'i_o5',name:'Priya — IP',client:'c3',itype:'IP',insurer:'AIA',cover:'$9,500/mo',inSuper:true,color:'#fca5a5',premium:'$2,100/yr'},
+    {id:'i_o6',name:'Sophie — Default Cover',client:'c4',itype:'Life',insurer:'TAL (REST)',cover:'$350,000',inSuper:true,color:'#fca5a5',premium:'Included'},
+    {id:'i_o7',name:'Key Person Insurance',client:'c5',itype:'Business',insurer:'AIA',cover:'$5,000,000',inSuper:false,color:'#ef4444',premium:'$12,000/yr'},
+    {id:'i_o8',name:'David — Life/TPD',client:'c5',itype:'Life',insurer:'Zurich',cover:'$4,000,000',inSuper:false,color:'#f87171',premium:'$5,200/yr'},
+    {id:'i_o9',name:'Carlos — Life/TPD',client:'c6',itype:'Life',insurer:'AIA',cover:'$1,200,000',inSuper:false,color:'#f87171',premium:'$3,200/yr'},
+    {id:'i_o10',name:'Maria — Income Protection',client:'c6',itype:'IP',insurer:'TAL',cover:'$7,500/mo',inSuper:false,color:'#fca5a5',premium:'$1,800/yr'},
+    {id:'i_o11',name:'Lisa — Standalone IP',client:'c7',itype:'IP',insurer:'MLC',cover:'$10,000/mo',inSuper:false,color:'#fca5a5',premium:'$2,400/yr'},
+    {id:'i_o12',name:'Aiden — Group Cover',client:'c8',itype:'Life',insurer:'TAL (ART)',cover:'$280,000',inSuper:true,color:'#fca5a5',premium:'Included'},
+    {id:'i_o13',name:'Tom — Life Cover',client:'c9',itype:'Life',insurer:'Zurich',cover:'$2,000,000',inSuper:false,color:'#f87171',premium:'$4,100/yr'},
+    {id:'i_o14',name:'Kelly — Income Protection',client:'c9',itype:'IP',insurer:'AIA',cover:'$9,000/mo',inSuper:false,color:'#fca5a5',premium:'$3,400/yr'},
+    {id:'i_o15',name:'Daniel — Life/TPD/IP',client:'c10',itype:'Life',insurer:'TAL',cover:'$1,800,000',inSuper:false,color:'#f87171',premium:'$2,900/yr'},
+    {id:'i_o16',name:'Rachel — IP Quote',client:'c11',itype:'IP',insurer:'Pending',cover:'TBC',inSuper:false,color:'#fca5a5',premium:'Pending'},
+  ];
+  const origGoals=[
+    {id:'g_o1',name:'Retirement at 60',client:'c1',target:'$12K/mo',progress:72},
+    {id:'g_o2',name:'Estate Planning',client:'c1',target:'Structure',progress:85},
+    {id:'g_o3',name:'Retirement Income',client:'c2',target:'$10K/mo',progress:78},
+    {id:'g_o4',name:"Children's Education",client:'c3',target:'$80K ea',progress:45},
+    {id:'g_o5',name:'First Home Deposit',client:'c4',target:'$120K by 2027',progress:52},
+    {id:'g_o6',name:'Business Succession',client:'c5',target:'2027',progress:40},
+    {id:'g_o7',name:'Retirement $20K/mo',client:'c5',target:'$20K/mo',progress:68},
+    {id:'g_o8',name:'Mortgage Free 2030',client:'c6',target:'2030',progress:42},
+    {id:'g_o9',name:'Property Purchase',client:'c7',target:'Mid-2026',progress:65},
+    {id:'g_o10',name:'Emergency Fund',client:'c8',target:'$25K',progress:20},
+    {id:'g_o11',name:'Retire at 60',client:'c9',target:'$8K/mo',progress:58},
+    {id:'g_o12',name:'Education Fund',client:'c9',target:'$120K total',progress:33},
+    {id:'g_o13',name:'Investment Property',client:'c10',target:'2025',progress:80},
+    {id:'g_o14',name:'Home Purchase',client:'c11',target:'$350K deposit',progress:30},
+    {id:'g_o15',name:'Debt Reduction',client:'c12',target:'Clear card',progress:25},
+  ];
+  const origTasks=[
+    {id:'t_o1',name:'Annual Review',client:'c1',ttype:'Annual Review',status:'pending',color:'#c084fc',due:'15 Mar 2026'},
+    {id:'t_o2',name:'SMSF Audit Q3',client:'c1',ttype:'SMSF Audit',status:'pending',color:'#d8b4fe',due:'30 Jun 2026'},
+    {id:'t_o3',name:'Rebalance Family Trust',client:'c1',ttype:'Action',status:'in-progress',color:'#a855f7',due:'20 Mar 2026'},
+    {id:'t_o4',name:'Estate Deed Update',client:'c2',ttype:'Legal',status:'pending',color:'#d8b4fe',due:'Apr 2026'},
+    {id:'t_o5',name:'Annual Review — Patricia',client:'c2',ttype:'Annual Review',status:'pending',color:'#d8b4fe',due:'30 Apr 2026'},
+    {id:'t_o6',name:'Salary Sacrifice ROA',client:'c3',ttype:'ROA',status:'pending',color:'#c084fc',due:'Jun 2026'},
+    {id:'t_o7',name:'Super Consolidation',client:'c3',ttype:'Action',status:'in-progress',color:'#c084fc',due:'Jun 2026'},
+    {id:'t_o8',name:'FHSS Application SOA',client:'c4',ttype:'SOA',status:'in-progress',color:'#c084fc',due:'Mar 2026'},
+    {id:'t_o9',name:'Succession Plan SOA',client:'c5',ttype:'SOA',status:'in-progress',color:'#a855f7',due:'Feb 2026'},
+    {id:'t_o10',name:'CGT Pre-sale Strategy',client:'c5',ttype:'Strategy',status:'pending',color:'#a855f7',due:'Mar 2026'},
+    {id:'t_o11',name:'Concessional Contribs',client:'c6',ttype:'Action',status:'pending',color:'#c084fc',due:'Jun 2026'},
+    {id:'t_o12',name:'Property Strategy ROA',client:'c7',ttype:'ROA',status:'pending',color:'#c084fc',due:'Feb 2026'},
+    {id:'t_o13',name:'Cash Flow Review',client:'c8',ttype:'Urgent Action',status:'overdue',color:'#e879f9',due:'⚠ URGENT'},
+    {id:'t_o14',name:'Debt Reduction SOA',client:'c8',ttype:'SOA',status:'overdue',color:'#e879f9',due:'⚠ OVERDUE'},
+    {id:'t_o15',name:'Annual Review',client:'c9',ttype:'Annual Review',status:'pending',color:'#c084fc',due:'Aug 2026'},
+    {id:'t_o16',name:'IP Quote & ROA',client:'c11',ttype:'ROA',status:'pending',color:'#c084fc',due:'Jun 2026'},
+    {id:'t_o17',name:'Annual Review',client:'c12',ttype:'Annual Review',status:'pending',color:'#c084fc',due:'Nov 2026'},
+  ];
+  const origProperties=[
+    {id:'pr_o1',name:'Morrison Family Home',client:'c1',ptype:'Primary',value:1800000,mortgage:0,equity:1800000,suburb:'Mosman NSW',color:'#8b5cf6'},
+    {id:'pr_o2',name:'Raintree St IP',client:'c1',ptype:'Investment',value:950000,mortgage:420000,equity:530000,suburb:'Bondi Beach NSW',color:'#a78bfa'},
+    {id:'pr_o3',name:'Beachside Unit',client:'c2',ptype:'Investment',value:720000,mortgage:185000,equity:535000,suburb:'Manly NSW',color:'#a78bfa'},
+    {id:'pr_o4',name:'Nguyen Family Home',client:'c3',ptype:'Primary',value:680000,mortgage:425000,equity:255000,suburb:'Parramatta NSW',color:'#8b5cf6'},
+    {id:'pr_o5',name:'Eastern Suburbs IP',client:'c5',ptype:'Investment',value:1200000,mortgage:0,equity:1200000,suburb:'Double Bay NSW',color:'#a78bfa'},
+    {id:'pr_o6',name:'Anderson Family Home',client:'c5',ptype:'Primary',value:2400000,mortgage:0,equity:2400000,suburb:'Toorak VIC',color:'#8b5cf6'},
+    {id:'pr_o7',name:'Mendez Family Home',client:'c6',ptype:'Primary',value:720000,mortgage:385000,equity:335000,suburb:'Blacktown NSW',color:'#8b5cf6'},
+    {id:'pr_o8',name:'Foster Family Home',client:'c9',ptype:'Primary',value:890000,mortgage:180000,equity:710000,suburb:'New Farm QLD',color:'#8b5cf6'},
+    {id:'pr_o9',name:'Foster Investment Unit',client:'c9',ptype:'Investment',value:580000,mortgage:315000,equity:265000,suburb:'Fortitude Valley QLD',color:'#a78bfa'},
+    {id:'pr_o10',name:'Kim Investment Property',client:'c10',ptype:'Investment',value:640000,mortgage:420000,equity:220000,suburb:'Fitzroy VIC',color:'#a78bfa'},
+  ];
+  PORTFOLIOS.push(...origPortfolios);
+  ENTITIES.push(...origEntities);
+  INSURANCE.push(...origInsurance);
+  GOALS.push(...origGoals);
+  TASKS.push(...origTasks);
+  PROPERTIES.push(...origProperties);
+
+  // Push preset + generate 41 more per adviser
+  advDefs.forEach((adv,ai)=>{
+    adv.preset.forEach(p=>{
+      CLIENTS.push({id:p.id,name:p.name,initials:p.ini,advisor:adv.id,segment:p.seg,
+        tier:p.seg==='HNW'?'A':p.seg==='MA'?'B':'C',aum:p.aum,
+        risk:RISKS[p.risk],riskScore:p.risk*2+1,status:p.status,dob:p.dob,
+        reviewDate:p.revD,lastReview:p.lastRev,consentSigned:p.consent,soaStatus:p.soa,
+        feeType:p.feeT,feeAmount:p.feeA,centrelink:p.cl,notes:p.notes});
+    });
+    const rc=rng(ai*99991+31337);
+    for(let ci=0;ci<41;ci++){
+      const seed=(ai+1)*88888+ci*17;const r=rng(seed);
+      const isCouple=r()<0.36;const isFem=!isCouple&&r()<0.46;
+      const fn1=(isFem?FF:FM)[Math.floor(r()*FM.length)];
+      const sn=SN[Math.floor(r()*SN.length)];
+      const fn2=isCouple?(r()<0.5?FF:FM)[Math.floor(r()*(r()<0.5?FF:FM).length)]:null;
+      const name=isCouple?`${fn1} & ${fn2} ${sn}`:isFem?`${fn1} ${sn}`:`${fn1} ${sn}`;
+      const disp=isCouple?`${sn} Family`:name;
+      const init=isCouple?sn.slice(0,2).toUpperCase():(fn1[0]+sn[0]).toUpperCase();
+      const segR=r();const seg=segR<0.17?'HNW':segR<0.60?'MA':'ACC';
+      const tier=seg==='HNW'?'A':seg==='MA'?'B':'C';
+      const aumB=seg==='HNW'?700000+r()*3500000:seg==='MA'?100000+r()*800000:15000+r()*190000;
+      const aum=Math.round(aumB/5000)*5000;
+      const feeB=seg==='HNW'?5000+r()*12000:seg==='MA'?2000+r()*4000:1000+r()*1800;
+      const fee=Math.round(feeB/100)*100;
+      const feeType=seg==='HNW'?'Ongoing':r()<0.62?'Ongoing':'Fixed';
+      const ri=Math.min(seg==='HNW'?Math.floor(r()*3):seg==='ACC'?2+Math.floor(r()*3):Math.floor(r()*5),4);
+      const risk=RISKS[ri];
+      const statR=r();const status=statR<0.65?'active':statR<0.83?'review':'risk';
+      const soaR=r();
+      const soaStatus=soaR<0.54?'Current':soaR<0.73?'ROA Due':soaR<0.87?'SOA Due':'Overdue';
+      const consent=status==='active'&&soaR<0.66;
+      const dobY=isCouple?`${1948+Math.floor(r()*38)} / ${1950+Math.floor(r()*33)}`:String(1948+Math.floor(r()*57));
+      const centrelink=parseInt(dobY)<1960&&r()<0.52;
+      const revM=MO[Math.floor(r()*12)];const lrM=MO[Math.floor(r()*12)];
+      const cid=`gc${ai}_${ci}`;
+      CLIENTS.push({id:cid,name:disp,initials:init,advisor:adv.id,segment:seg,tier,aum,risk,riskScore:ri*2+1,status,dob:dobY,reviewDate:`${revM} 2026`,lastReview:`${lrM} 2025`,consentSigned:consent,soaStatus,feeType,feeAmount:`$${fee.toLocaleString()}/yr`,centrelink,notes:''});
+      // Super
+      const sf=SF[Math.floor(r()*SF.length)];const sv=Math.round(aum*(0.3+r()*0.28)/1000)*1000;
+      PORTFOLIOS.push({id:`p${pi++}`,name:`${isCouple?sn:fn1} ${sf}`,client:cid,ptype:sv>400000&&r()<0.18?'SMSF':'Super',value:sv,color:'#22c55e',perf:`+${(4+r()*7).toFixed(1)}%`});
+      if(isCouple&&r()<0.62) PORTFOLIOS.push({id:`p${pi++}`,name:`${fn2} ${SF[Math.floor(r()*SF.length)]}`,client:cid,ptype:'Super',value:Math.round(sv*0.58/1000)*1000,color:'#4ade80',perf:`+${(4+r()*6).toFixed(1)}%`});
+      if(seg!=='ACC'&&r()<0.52) PORTFOLIOS.push({id:`p${pi++}`,name:r()<0.22?`${sn} SMSF`:`${sn} Managed Portfolio`,client:cid,ptype:r()<0.22?'SMSF':'Investment',value:Math.round(aum*(0.12+r()*0.28)/1000)*1000,color:'#60a5fa',perf:`+${(5+r()*9).toFixed(1)}%`});
+      // Insurance
+      const ins=INS[Math.floor(r()*INS.length)];const lv=Math.round((250000+r()*3500000)/50000)*50000;
+      INSURANCE.push({id:`i${ii++}`,name:`${fn1} — Life/TPD`,client:cid,itype:'Life',insurer:ins,cover:`$${lv.toLocaleString()}`,inSuper:r()<0.28,color:'#f87171',premium:`$${Math.round((1400+r()*5500)/100)*100}/yr`});
+      if(r()<0.52){const ipv=Math.round((2500+r()*9500)/500)*500;INSURANCE.push({id:`i${ii++}`,name:`${fn1} — Income Protection`,client:cid,itype:'IP',insurer:INS[Math.floor(r()*INS.length)],cover:`$${ipv.toLocaleString()}/mo`,inSuper:r()<0.2,color:'#fca5a5',premium:`$${Math.round((900+r()*3800)/100)*100}/yr`});}
+      // Property
+      if(r()<0.26){const sub=SUB[Math.floor(r()*SUB.length)];const pv=Math.round((350000+r()*2500000)/10000)*10000;const mort=Math.round(pv*(0.08+r()*0.58)/10000)*10000;PROPERTIES.push({id:`pr${pri++}`,name:`${sn} ${r()<0.55?'Home':'Property'}`,client:cid,ptype:r()<0.6?'Primary':'Investment',value:pv,mortgage:mort,equity:pv-mort,suburb:sub,color:r()<0.55?'#8b5cf6':'#a78bfa'});}
+      // Goal
+      GOALS.push({id:`g${gi++}`,name:GT[Math.floor(r()*GT.length)],client:cid,target:'',progress:Math.round(12+r()*78)});
+      // Task
+      const tt=TT[Math.floor(r()*TT.length)];const ts=status==='risk'?'overdue':status==='review'&&r()<0.36?'in-progress':'pending';const tm=MO[Math.floor(r()*12)];
+      TASKS.push({id:`t${ti++}`,name:`${tt} — ${sn}`,client:cid,ttype:tt,status:ts,color:'#c084fc',due:ts==='overdue'?'⚠ OVERDUE':`${tm} 2026`});
+    }
+  });
+})();
+
+// placeholder — keep original data reference below intact
+/* LEGACY DATA BLOCK — superseded by generator above
+   risk:'Moderate',riskScore:5,status:'active',dob:'1968 / 1965',reviewDate:'Mar 2026',
+   lastReview:'Mar 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Ongoing',feeAmount:'$8,500/yr',centrelink:false,
+   notes:'Robert & Linda. SMSF + family trust structure. Business interests via Anderson & Co.'},
+  {id:'c2',name:'Patricia Hamilton',initials:'PH',advisor:'a1',segment:'HNW',tier:'A',aum:1900000,
+   risk:'Conservative',riskScore:3,status:'active',dob:'1952',reviewDate:'Apr 2026',
+   lastReview:'Apr 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Ongoing',feeAmount:'$7,200/yr',centrelink:true,
+   notes:'Widowed. Age Pension eligible. Estate planning and drawdown strategy focus. TBC balance approaching cap.'},
+  {id:'c3',name:'Nguyen Family',initials:'NF',advisor:'a1',segment:'MA',tier:'B',aum:680000,
+   risk:'Growth',riskScore:6,status:'review',dob:'1985 / 1987',reviewDate:'Jun 2026',
+   lastReview:'Jun 2025',consentSigned:false,soaStatus:'ROA Due',
+   feeType:'Ongoing',feeAmount:'$4,800/yr',centrelink:false,
+   notes:'James & Priya. Education + property goals. Salary sacrifice CC strategy review overdue. Annual consent outstanding.'},
+  {id:'c4',name:'Sophie Williams',initials:'SW',advisor:'a1',segment:'ACC',tier:'C',aum:175000,
+   risk:'High Growth',riskScore:8,status:'active',dob:'1999',reviewDate:'Sep 2026',
+   lastReview:'Sep 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Fixed',feeAmount:'$2,200/yr',centrelink:false,
+   notes:'26yo. First Home Super Saver — tracking towards $50K FHSS release. SOA in progress.'},
+  {id:'c5',name:'Anderson Family',initials:'AF',advisor:'a2',segment:'HNW',tier:'A',aum:3100000,
+   risk:'Moderately Conservative',riskScore:4,status:'active',dob:'1962 / 1964',reviewDate:'Feb 2026',
+   lastReview:'Feb 2025',consentSigned:true,soaStatus:'SOA Due',
+   feeType:'Ongoing',feeAmount:'$14,500/yr',centrelink:false,
+   notes:'Business owners. Succession and CGT planning for 2027 sale. Key person insurance in place. New SOA required.'},
+  {id:'c6',name:'Carlos Mendez',initials:'CM',advisor:'a2',segment:'MA',tier:'B',aum:520000,
+   risk:'Moderate',riskScore:5,status:'active',dob:'1980 / 1982',reviewDate:'Jul 2026',
+   lastReview:'Jul 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Ongoing',feeAmount:'$3,900/yr',centrelink:false,
+   notes:'Carlos & Maria. Dual income. Reviewing CC strategy and non-concessional top-up for FY26.'},
+  {id:'c7',name:'Lisa Chang',initials:'LC',advisor:'a2',segment:'MA',tier:'B',aum:440000,
+   risk:'Moderately Aggressive',riskScore:6,status:'review',dob:'1988',reviewDate:'Jun 2026',
+   lastReview:'Jun 2025',consentSigned:false,soaStatus:'ROA Due',
+   feeType:'Ongoing',feeAmount:'$3,400/yr',centrelink:false,
+   notes:'UniSuper member. Property purchase mid-2026. ROA required for gearing and borrowing strategy.'},
+  {id:'c8',name:'Aiden Brown',initials:'AB',advisor:'a2',segment:'ACC',tier:'C',aum:95000,
+   risk:'High Growth',riskScore:8,status:'risk',dob:'1995',reviewDate:'May 2026',
+   lastReview:'Nov 2024',consentSigned:false,soaStatus:'Overdue',
+   feeType:'Fixed',feeAmount:'$1,800/yr',centrelink:false,
+   notes:'High debt ratio. Urgent cash flow and debt reduction review needed. SOA and annual consent both overdue.'},
+  {id:'c9',name:'Foster Family',initials:'FF',advisor:'a3',segment:'MA',tier:'B',aum:820000,
+   risk:'Moderately Aggressive',riskScore:6,status:'active',dob:'1975 / 1977',reviewDate:'Aug 2026',
+   lastReview:'Aug 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Ongoing',feeAmount:'$5,200/yr',centrelink:false,
+   notes:'Tom & Kelly. 3 children. Education bond and IP strategy under review.'},
+  {id:'c10',name:'Daniel Kim',initials:'DK',advisor:'a3',segment:'MA',tier:'B',aum:340000,
+   risk:'Growth',riskScore:7,status:'active',dob:'1986',reviewDate:'Oct 2026',
+   lastReview:'Oct 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Ongoing',feeAmount:'$3,100/yr',centrelink:false,
+   notes:'IT professional. Negatively geared IP strategy. Reviewing borrowing capacity for second property.'},
+  {id:'c11',name:'Rachel Green',initials:'RG',advisor:'a3',segment:'ACC',tier:'C',aum:220000,
+   risk:'Growth',riskScore:7,status:'review',dob:'1991',reviewDate:'Jun 2026',
+   lastReview:'Jun 2025',consentSigned:false,soaStatus:'ROA Due',
+   feeType:'Fixed',feeAmount:'$2,500/yr',centrelink:false,
+   notes:'Planning to start a family. Parental leave income strategy and IP cover ROA pending.'},
+  {id:'c12',name:'Nathan Wilson',initials:'NW',advisor:'a3',segment:'ACC',tier:'C',aum:110000,
+   risk:'High Growth',riskScore:8,status:'active',dob:'1997',reviewDate:'Nov 2026',
+   lastReview:'Nov 2025',consentSigned:true,soaStatus:'Current',
+   feeType:'Fixed',feeAmount:'$1,600/yr',centrelink:false,
+   notes:'Early career. Credit card debt reduction and super consolidation in progress.'},
+];
+const PORTFOLIOS=[
+  {id:'p1', name:'Morrison SMSF',          client:'c1', ptype:'SMSF',       value:1200000, color:'#16a34a', perf:'+8.4%'},
+  {id:'p2', name:'Robert\'s Aware Super',  client:'c1', ptype:'Super',      value:580000,  color:'#22c55e', perf:'+7.1%'},
+  {id:'p3', name:'Family Trust Portfolio', client:'c1', ptype:'Investment',  value:620000,  color:'#60a5fa', perf:'+11.2%'},
+  {id:'p4', name:'Hamilton SMSF',          client:'c2', ptype:'SMSF',       value:1100000, color:'#16a34a', perf:'+6.8%'},
+  {id:'p5', name:'Cash & Term Deposits',   client:'c2', ptype:'Investment',  value:800000,  color:'#93c5fd', perf:'+4.9%'},
+  {id:'p6', name:'James AustralianSuper',  client:'c3', ptype:'Super',      value:340000,  color:'#22c55e', perf:'+9.3%'},
+  {id:'p7', name:'Priya REST Super',       client:'c3', ptype:'Super',      value:220000,  color:'#4ade80', perf:'+8.7%'},
+  {id:'p8', name:'Joint Investment Acc',   client:'c3', ptype:'Investment',  value:120000,  color:'#60a5fa', perf:'+6.2%'},
+  {id:'p9', name:'Sophie REST Super',      client:'c4', ptype:'Super',      value:145000,  color:'#22c55e', perf:'+10.1%'},
+  {id:'p10',name:'Savings Account',        client:'c4', ptype:'Cash',       value:30000,   color:'#93c5fd', perf:'+4.1%'},
+  {id:'p11',name:'Anderson SMSF',          client:'c5', ptype:'SMSF',       value:1800000, color:'#15803d', perf:'+9.7%'},
+  {id:'p12',name:'Anderson & Co Portfolio',client:'c5', ptype:'Investment',  value:900000,  color:'#3b82f6', perf:'+12.4%'},
+  {id:'p13',name:'Direct Shares',          client:'c5', ptype:'Investment',  value:400000,  color:'#60a5fa', perf:'+14.2%'},
+  {id:'p14',name:'Carlos Aware Super',     client:'c6', ptype:'Super',      value:280000,  color:'#22c55e', perf:'+7.8%'},
+  {id:'p15',name:'Maria AustralianSuper',  client:'c6', ptype:'Super',      value:155000,  color:'#4ade80', perf:'+8.1%'},
+  {id:'p16',name:'Joint Investment',       client:'c6', ptype:'Investment',  value:85000,   color:'#93c5fd', perf:'+5.6%'},
+  {id:'p17',name:'Lisa UniSuper',          client:'c7', ptype:'Super',      value:380000,  color:'#22c55e', perf:'+8.9%'},
+  {id:'p18',name:'ETF Portfolio',          client:'c7', ptype:'Investment',  value:60000,   color:'#60a5fa', perf:'+10.3%'},
+  {id:'p19',name:'Aiden ART Super',        client:'c8', ptype:'Super',      value:88000,   color:'#22c55e', perf:'+9.4%'},
+  {id:'p20',name:'Tom HostPlus',           client:'c9', ptype:'Super',      value:410000,  color:'#22c55e', perf:'+8.2%'},
+  {id:'p21',name:'Kelly QSuper',           client:'c9', ptype:'Super',      value:290000,  color:'#4ade80', perf:'+7.6%'},
+  {id:'p22',name:'Family Trust Portfolio', client:'c9', ptype:'Investment',  value:120000,  color:'#60a5fa', perf:'+7.1%'},
+  {id:'p23',name:'Daniel CBA Super',       client:'c10',ptype:'Super',      value:290000,  color:'#22c55e', perf:'+8.5%'},
+  {id:'p24',name:'Share Portfolio',        client:'c10',ptype:'Investment',  value:50000,   color:'#3b82f6', perf:'+13.1%'},
+  {id:'p25',name:'Rachel HESTA',           client:'c11',ptype:'Super',      value:195000,  color:'#22c55e', perf:'+8.0%'},
+  {id:'p26',name:'Nathan Rest Super',      client:'c12',ptype:'Super',      value:96000,   color:'#22c55e', perf:'+9.6%'},
+];
+const ENTITIES=[
+  {id:'e1',name:'Morrison Family Trust',  client:'c1', etype:'Family Trust', color:'#fb923c'},
+  {id:'e2',name:'Hamilton Estate Trust',  client:'c2', etype:'Estate Trust',  color:'#fb923c'},
+  {id:'e3',name:'Anderson & Co Pty Ltd',  client:'c5', etype:'Company',       color:'#ea580c'},
+  {id:'e4',name:'Anderson Family Trust',  client:'c5', etype:'Family Trust', color:'#fb923c'},
+  {id:'e5',name:'Foster Family Trust',    client:'c9', etype:'Family Trust', color:'#fb923c'},
+];
+const GOALS=[
+  {id:'g1', name:'Retirement at 60',      client:'c1', target:'$12K/mo',      progress:72},
+  {id:'g2', name:'Estate Planning',       client:'c1', target:'Structure',    progress:85},
+  {id:'g3', name:'Overseas Travel Fund',  client:'c2', target:'$150K',        progress:90},
+  {id:'g4', name:'Retirement Income',     client:'c2', target:'$10K/mo',      progress:78},
+  {id:'g5', name:'Children\'s Education', client:'c3', target:'$80K ea',      progress:45},
+  {id:'g6', name:'Pay Off Mortgage',      client:'c3', target:'5 years',      progress:38},
+  {id:'g7', name:'First Home Deposit',    client:'c4', target:'$120K by 2027',progress:52},
+  {id:'g8', name:'Business Succession',   client:'c5', target:'2027',         progress:40},
+  {id:'g9', name:'Retirement $20K/mo',    client:'c5', target:'$20K/mo',      progress:68},
+  {id:'g10',name:'Mortgage Free 2030',    client:'c6', target:'2030',         progress:42},
+  {id:'g11',name:'Property Purchase',     client:'c7', target:'Mid-2026',     progress:65},
+  {id:'g12',name:'Emergency Fund',        client:'c8', target:'$25K',         progress:20},
+  {id:'g13',name:'Retire at 60',          client:'c9', target:'$8K/mo',       progress:58},
+  {id:'g14',name:'Education Fund',        client:'c9', target:'$120K total',  progress:33},
+  {id:'g15',name:'Investment Property',   client:'c10',target:'2025',         progress:80},
+  {id:'g16',name:'Home Purchase',         client:'c11',target:'$350K deposit',progress:30},
+  {id:'g17',name:'Debt Reduction',        client:'c12',target:'Clear card',   progress:25},
+];
+const INSURANCE=[
+  {id:'i1', name:'Robert — Life Cover',    client:'c1', itype:'Life',    insurer:'AIA',         cover:'$3,000,000', inSuper:false, color:'#f87171', premium:'$4,200/yr'},
+  {id:'i2', name:'Robert — TPD Cover',     client:'c1', itype:'TPD',     insurer:'AIA',         cover:'$3,000,000', inSuper:false, color:'#fca5a5', premium:'$2,800/yr'},
+  {id:'i3', name:'Linda — Income Prot.',   client:'c1', itype:'IP',      insurer:'TAL',         cover:'$12,500/mo', inSuper:false, color:'#fecdd3', premium:'$3,100/yr'},
+  {id:'i4', name:'Patricia — Life Cover',  client:'c2', itype:'Life',    insurer:'TAL',         cover:'$2,000,000', inSuper:false, color:'#f87171', premium:'$3,600/yr'},
+  {id:'i5', name:'Patricia — IP',          client:'c2', itype:'IP',      insurer:'MLC',         cover:'$8,000/mo',  inSuper:false, color:'#fca5a5', premium:'$2,200/yr'},
+  {id:'i6', name:'James — Life Cover',     client:'c3', itype:'Life',    insurer:'Zurich',      cover:'$1,500,000', inSuper:true,  color:'#f87171', premium:'$3,800/yr'},
+  {id:'i7', name:'Priya — IP',             client:'c3', itype:'IP',      insurer:'AIA',         cover:'$9,500/mo',  inSuper:true,  color:'#fca5a5', premium:'$2,100/yr'},
+  {id:'i8', name:'Sophie — Default Cover', client:'c4', itype:'Life',    insurer:'TAL (REST)',   cover:'$350,000',   inSuper:true,  color:'#fca5a5', premium:'Included'},
+  {id:'i9', name:'Key Person Insurance',   client:'c5', itype:'Business',insurer:'AIA',         cover:'$5,000,000', inSuper:false, color:'#ef4444', premium:'$12,000/yr'},
+  {id:'i10',name:'David — Life + TPD',     client:'c5', itype:'Life',    insurer:'Zurich',      cover:'$4,000,000', inSuper:false, color:'#f87171', premium:'$5,200/yr'},
+  {id:'i11',name:'Carlos — Life + TPD',    client:'c6', itype:'Life',    insurer:'AIA',         cover:'$1,200,000', inSuper:false, color:'#f87171', premium:'$3,200/yr'},
+  {id:'i12',name:'Maria — Income Prot.',   client:'c6', itype:'IP',      insurer:'TAL',         cover:'$7,500/mo',  inSuper:false, color:'#fca5a5', premium:'$1,800/yr'},
+  {id:'i13',name:'Lisa — Standalone IP',   client:'c7', itype:'IP',      insurer:'MLC',         cover:'$10,000/mo', inSuper:false, color:'#fca5a5', premium:'$2,400/yr'},
+  {id:'i14',name:'Aiden — Group Cover',    client:'c8', itype:'Life',    insurer:'TAL (ART)',    cover:'$280,000',   inSuper:true,  color:'#fca5a5', premium:'Included'},
+  {id:'i15',name:'Tom — Life Cover',       client:'c9', itype:'Life',    insurer:'Zurich',      cover:'$2,000,000', inSuper:false, color:'#f87171', premium:'$4,100/yr'},
+  {id:'i16',name:'Kelly — Income Prot.',   client:'c9', itype:'IP',      insurer:'AIA',         cover:'$9,000/mo',  inSuper:false, color:'#f87171', premium:'$3,400/yr'},
+  {id:'i17',name:'Daniel — Life+TPD+IP',   client:'c10',itype:'Life',    insurer:'TAL',         cover:'$1,800,000', inSuper:false, color:'#f87171', premium:'$2,900/yr'},
+  {id:'i18',name:'Rachel — IP Quote',      client:'c11',itype:'IP',      insurer:'Pending',     cover:'TBC',        inSuper:false, color:'#fca5a5', premium:'Pending'},
+];
+const TASKS=[
+  {id:'t1', name:'Annual Review',          client:'c1', ttype:'Annual Review', status:'pending',     color:'#c084fc', due:'15 Mar 2026'},
+  {id:'t2', name:'SMSF Audit Q3',          client:'c1', ttype:'SMSF Audit',    status:'pending',     color:'#d8b4fe', due:'30 Jun 2026'},
+  {id:'t3', name:'Rebalance Family Trust', client:'c1', ttype:'Action',        status:'in-progress', color:'#a855f7', due:'20 Mar 2026'},
+  {id:'t4', name:'Estate Deed Update',     client:'c2', ttype:'Legal',         status:'pending',     color:'#d8b4fe', due:'Apr 2026'},
+  {id:'t5', name:'Annual Review — Patricia',client:'c2', ttype:'Annual Review', status:'pending',     color:'#d8b4fe', due:'30 Apr 2026'},
+  {id:'t6', name:'Salary Sacrifice ROA',   client:'c3', ttype:'ROA',           status:'pending',     color:'#c084fc', due:'Jun 2026'},
+  {id:'t7', name:'Super Consolidation',    client:'c3', ttype:'Action',        status:'in-progress', color:'#c084fc', due:'Jun 2026'},
+  {id:'t8', name:'FHSS Application SOA',   client:'c4', ttype:'SOA',           status:'in-progress', color:'#c084fc', due:'Mar 2026'},
+  {id:'t9', name:'Succession Plan SOA',    client:'c5', ttype:'SOA',           status:'in-progress', color:'#a855f7', due:'Feb 2026'},
+  {id:'t10',name:'CGT Pre-sale Strategy',  client:'c5', ttype:'Strategy',      status:'pending',     color:'#a855f7', due:'Mar 2026'},
+  {id:'t11',name:'Concessional Contribs',  client:'c6', ttype:'Action',        status:'pending',     color:'#c084fc', due:'Jun 2026'},
+  {id:'t12',name:'Property Strategy ROA',  client:'c7', ttype:'ROA',           status:'pending',     color:'#c084fc', due:'Feb 2026'},
+  {id:'t13',name:'Cash Flow Review',       client:'c8', ttype:'Urgent Action', status:'overdue',     color:'#e879f9', due:'⚠ URGENT'},
+  {id:'t14',name:'Debt Reduction SOA',     client:'c8', ttype:'SOA',           status:'overdue',     color:'#e879f9', due:'⚠ OVERDUE'},
+  {id:'t15',name:'Annual Review',          client:'c9', ttype:'Annual Review', status:'pending',     color:'#c084fc', due:'Aug 2026'},
+  {id:'t16',name:'Education Bond Advice',  client:'c9', ttype:'Strategy',      status:'pending',     color:'#c084fc', due:'Apr 2026'},
+  {id:'t17',name:'Investment Lending SOA', client:'c10',ttype:'SOA',           status:'pending',     color:'#c084fc', due:'Mar 2026'},
+  {id:'t18',name:'Parental Leave Strategy',client:'c11',ttype:'Strategy',      status:'pending',     color:'#c084fc', due:'May 2026'},
+  {id:'t19',name:'IP Quote & ROA',         client:'c11',ttype:'ROA',           status:'pending',     color:'#c084fc', due:'Jun 2026'},
+  {id:'t20',name:'Annual Review',          client:'c12',ttype:'Annual Review', status:'pending',     color:'#c084fc', due:'Nov 2026'},
+];
+const PROPERTIES=[
+  {id:'pr1',name:'Morrison Family Home',   client:'c1',ptype:'Primary',   value:1800000,mortgage:0,      equity:1800000,suburb:'Mosman NSW',       color:'#8b5cf6'},
+  {id:'pr2',name:'Raintree St IP',         client:'c1',ptype:'Investment',value:950000, mortgage:420000, equity:530000, suburb:'Bondi Beach NSW',   color:'#a78bfa'},
+  {id:'pr3',name:'Beachside Unit',         client:'c2',ptype:'Investment',value:720000, mortgage:185000, equity:535000, suburb:'Manly NSW',         color:'#a78bfa'},
+  {id:'pr4',name:'Nguyen Family Home',     client:'c3',ptype:'Primary',   value:680000, mortgage:425000, equity:255000, suburb:'Parramatta NSW',    color:'#8b5cf6'},
+  {id:'pr5',name:'Eastern Suburbs IP',     client:'c5',ptype:'Investment',value:1200000,mortgage:0,      equity:1200000,suburb:'Double Bay NSW',    color:'#a78bfa'},
+  {id:'pr6',name:'Anderson Family Home',   client:'c5',ptype:'Primary',   value:2400000,mortgage:0,      equity:2400000,suburb:'Toorak VIC',        color:'#8b5cf6'},
+  {id:'pr7',name:'Mendez Family Home',     client:'c6',ptype:'Primary',   value:720000, mortgage:385000, equity:335000, suburb:'Blacktown NSW',     color:'#8b5cf6'},
+  {id:'pr8',name:'Foster Investment Unit', client:'c9',ptype:'Investment',value:580000, mortgage:315000, equity:265000, suburb:'Fortitude Valley QLD',color:'#a78bfa'},
+  {id:'pr9', name:'Family Home',          client:'c9', ptype:'Primary',    value:890000,  color:'#8b5cf6'},
+END LEGACY DATA BLOCK */
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let allNodes=[], allConns=[];
+const nodeMap = new Map();
+const connMap = new Map();
+let activeFilter='all', selectedId=null;
+
+const RADII      = {0:0, 1:110, 2:420, 3:590, 4:740};
+const SIZES      = {practice:28, advisor:18, client:9, category:9,
+                    super:6, investment:6, property:6, entity:6,
+                    insurance:5, goal:6, task:5};
+const RING_DELAY = {0:0, 1:100, 2:230, 3:385, 4:530};
+
+function clientColor(c){
+  return c.segment==='HNW'?'#f59e0b':c.segment==='MA'?'#10b981':'#818cf8';
+}
+
+// ═══════════════════════════════════════════════════
+//  BUILD GRAPH
+// ═══════════════════════════════════════════════════
+function buildGraph(){
+  allNodes=[]; allConns=[];
+
+  allNodes.push({id:'practice',type:'practice',name:'Apex',initials:'AF',color:'#1e293b',ring:0});
+  ADVISORS.forEach(a=>allNodes.push({...a,type:'advisor',ring:1}));
+  CLIENTS.forEach(c=>allNodes.push({...c,type:'client',ring:2}));
+
+  // Practice → Advisors → Clients
+  ADVISORS.forEach(a=>allConns.push({from:'practice',to:a.id,color:a.color+'99'}));
+  CLIENTS.forEach(c=>allConns.push({from:c.advisor,to:c.id,color:ADVISORS.find(a=>a.id===c.advisor).color+'88'}));
+
+  // Per-client: category hubs → leaf items
+  CLIENTS.forEach(c=>{
+    const superFunds  = PORTFOLIOS.filter(p=>p.client===c.id&&['Super','SMSF'].includes(p.ptype));
+    const invFunds    = PORTFOLIOS.filter(p=>p.client===c.id&&!['Super','SMSF'].includes(p.ptype));
+    const props       = PROPERTIES.filter(p=>p.client===c.id);
+    const ents        = ENTITIES.filter(e=>e.client===c.id);
+    const ins         = INSURANCE.filter(i=>i.client===c.id);
+    const goals       = GOALS.filter(g=>g.client===c.id);
+    const tasks       = TASKS.filter(t=>t.client===c.id);
+
+    const catEntries=[
+      {key:'super',       items:superFunds,  leafType:'super'},
+      {key:'investments', items:invFunds,    leafType:'investment'},
+      {key:'property',    items:props,       leafType:'property'},
+      {key:'entities',    items:ents,        leafType:'entity'},
+      {key:'insurance',   items:ins,         leafType:'insurance'},
+      {key:'goals',       items:goals,       leafType:'goal'},
+      {key:'tasks',       items:tasks,       leafType:'task'},
+    ].filter(x=>x.items.length>0);
+
+    catEntries.forEach(cat=>{
+      const meta=CATEGORY_META[cat.key];
+      const catId=`cat-${c.id}-${cat.key}`;
+      allNodes.push({id:catId,type:'category',catKey:cat.key,client:c.id,name:meta.label,color:meta.color,ring:3});
+      allConns.push({from:c.id,to:catId,color:meta.color+'99'});
+      cat.items.forEach(item=>{
+        allNodes.push({...item,type:cat.leafType,catId:catId,client:c.id,ring:4});
+        allConns.push({from:catId,to:item.id,color:meta.color+'66'});
+      });
+    });
+  });
+
+  // Sidebar counts
+  const superNodes  = allNodes.filter(n=>n.type==='super');
+  const invNodes    = allNodes.filter(n=>n.type==='investment');
+  const propNodes   = allNodes.filter(n=>n.type==='property');
+  document.getElementById('cnt-all').textContent       = allNodes.length;
+  document.getElementById('cnt-advisor').textContent   = ADVISORS.length;
+  document.getElementById('cnt-client').textContent    = CLIENTS.length;
+  document.getElementById('cnt-super').textContent     = superNodes.length;
+  document.getElementById('cnt-investments').textContent = invNodes.length;
+  document.getElementById('cnt-property').textContent  = propNodes.length;
+  document.getElementById('cnt-entity').textContent    = ENTITIES.length;
+  document.getElementById('cnt-goal').textContent      = GOALS.length;
+
+  // Practice stats — computed from live data
+  const totalAUMv = CLIENTS.reduce((s,c)=>s+c.aum,0);
+  const aumStr    = totalAUMv>=1e6?'$'+(totalAUMv/1e6).toFixed(1)+'M':'$'+(totalAUMv/1e3).toFixed(0)+'K';
+  const reviewCt  = CLIENTS.filter(c=>c.status==='review').length;
+  const urgentCt  = CLIENTS.filter(c=>c.status==='risk').length;
+  const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  setText('sb-clients',  CLIENTS.length);
+  setText('sb-aum',      aumStr);
+  setText('sb-reviews',  reviewCt);
+  setText('sb-urgent',   urgentCt);
+  setText('stat-clients',CLIENTS.length);
+  setText('stat-reviews',reviewCt);
+  setText('stat-urgent', urgentCt);
+  setText('stat-aum',    aumStr);
+  setText('dash-clients',CLIENTS.length);
+  setText('dash-urgent', urgentCt);
+  setText('dash-aum',    aumStr);
+  document.getElementById('cnt-insurance').textContent = INSURANCE.length;
+  document.getElementById('cnt-task').textContent      = TASKS.length;
+  const snEl=document.getElementById('stat-nodes'); if(snEl) snEl.textContent=allNodes.length;
+  const scEl=document.getElementById('stat-conns'); if(scEl) scEl.textContent=allConns.length;
+}
+
+// ═══════════════════════════════════════════════════
+//  LAYOUT
+// ═══════════════════════════════════════════════════
+function calcLayout(CX,CY){
+  const pNode=allNodes.find(n=>n.id==='practice');
+  pNode.x=CX; pNode.y=CY;
+
+  // Advisors: 3 arcs of 120° each
+  const advAngles=[-Math.PI/2, -Math.PI/2+2*Math.PI/3, -Math.PI/2+4*Math.PI/3];
+  ADVISORS.forEach((adv,i)=>{
+    const n=allNodes.find(x=>x.id===adv.id);
+    const a=advAngles[i];
+    n.x=CX+RADII[1]*Math.cos(a); n.y=CY+RADII[1]*Math.sin(a);
+    n.angle=a; n.arcStart=a-Math.PI/3; n.arcEnd=a+Math.PI/3;
+  });
+
+  // Clients: 3 staggered concentric rings — sorted by last name (A-Z inner→outer)
+  // Odd rings offset by half-slot: hexagonal packing like the sunflower reference
+  ADVISORS.forEach(adv=>{
+    const adNode=allNodes.find(x=>x.id===adv.id);
+    const sibs=[...CLIENTS.filter(c=>c.advisor===adv.id)]
+      .sort((a,b)=>{
+        const la=a.name.trim().split(/\s+/).pop();
+        const lb=b.name.trim().split(/\s+/).pop();
+        return la.localeCompare(lb);
+      });
+    const n=sibs.length;
+    // Count per ring proportional to radius → uniform arc spacing across rings
+    // 5 rings — counts proportional to radius → uniform arc-spacing across all rings
+    const RING_R=[138,182,228,278,334];
+    const Wsum=RING_R.reduce((s,r)=>s+r,0);
+    const cnt=[
+      Math.round(n*RING_R[0]/Wsum),
+      Math.round(n*RING_R[1]/Wsum),
+      Math.round(n*RING_R[2]/Wsum),
+      Math.round(n*RING_R[3]/Wsum),
+      0
+    ];
+    cnt[4]=n-cnt[0]-cnt[1]-cnt[2]-cnt[3];
+
+    // Padding must guarantee physical clearance ≥ nodeRadius+4px at the smallest ring
+    const nodeR=SIZES.client||9;
+    const minPad=(nodeR+5)/RING_R[0]; // radians — ensures gap at innermost ring
+    const pad=Math.max((adNode.arcEnd-adNode.arcStart)*0.045, minPad);
+    const as=adNode.arcStart+pad, ae=adNode.arcEnd-pad;
+
+    let ci=0;
+    RING_R.forEach((r,ri)=>{
+      const count=cnt[ri];
+      // Stagger every other ring by half a slot for hex packing
+      const halfSlot=ri%2===1 ? (ae-as)/(count*2) : 0;
+      const span=ae-as-2*halfSlot;
+      for(let i=0;i<count;i++){
+        const angle=count<=1?(as+ae)/2 : as+halfSlot+(i/(count-1))*span;
+        const c=sibs[ci++];
+        const node=allNodes.find(x=>x.id===c.id);
+        node.x=CX+r*Math.cos(angle);
+        node.y=CY+r*Math.sin(angle);
+        node.angle=angle;
+        const sw=(ae-as)/n;
+        node.arcStart=as+(ci-1)*sw;
+        node.arcEnd  =as+ci*sw;
+      }
+    });
+  });
+
+  // Category hubs: fan outward from the client node (not ring-based)
+  // This gives the organic "brain" spread rather than a linear arc
+  CLIENTS.forEach(c=>{
+    const cNode=allNodes.find(n=>n.id===c.id);
+    const cats=allNodes.filter(n=>n.type==='category'&&n.client===c.id);
+    if(!cats.length) return;
+    const outward=cNode.angle;          // direction away from practice center
+    const fanSpread=Math.PI*0.72;       // ~130° total fan around outward direction
+    const catDist=145;                  // px from client to category node
+    cats.forEach((cat,idx)=>{
+      const fa=cats.length===1?outward
+               :outward-fanSpread/2+(idx/(cats.length-1))*fanSpread;
+      cat.x=cNode.x+catDist*Math.cos(fa);
+      cat.y=cNode.y+catDist*Math.sin(fa);
+      cat.angle=fa;
+      // arcStart/arcEnd used to spread leaf nodes around each category
+      const halfSlice=fanSpread/(cats.length*2);
+      cat.arcStart=fa-halfSlice; cat.arcEnd=fa+halfSlice;
+    });
+  });
+
+  // Leaf items: fan outward from their category node
+  allNodes.filter(n=>n.type==='category').forEach(cat=>{
+    const leaves=allNodes.filter(n=>n.catId===cat.id);
+    if(!leaves.length) return;
+    const fanSpread=Math.PI*0.44;       // ~80° total
+    const leafDist=88;                  // px from category to leaf
+    leaves.forEach((leaf,idx)=>{
+      const fa=leaves.length===1?cat.angle
+               :cat.angle-fanSpread/2+(idx/(leaves.length-1))*fanSpread;
+      leaf.x=cat.x+leafDist*Math.cos(fa);
+      leaf.y=cat.y+leafDist*Math.sin(fa);
+      leaf.angle=fa;
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER  (once — CSS classes manage all state)
+// ═══════════════════════════════════════════════════
+function renderPracticeBrain(){
+  const svg=document.getElementById('mainSvg');
+  const W=svg.clientWidth||900, H=svg.clientHeight||600;
+  const CX=W/2, CY=H/2+8;
+  graphCX=CX; graphCY=CY;
+  calcLayout(CX,CY);
+
+  svg.innerHTML='';
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  nodeMap.clear(); connMap.clear();
+
+  // SVG defs
+  const defs=mkEl('defs');
+  const filt=mkEl('filter'); filt.id='glow';
+  filt.setAttribute('x','-50%'); filt.setAttribute('y','-50%');
+  filt.setAttribute('width','200%'); filt.setAttribute('height','200%');
+  const blur=mkEl('feGaussianBlur'); blur.setAttribute('stdDeviation','4'); blur.setAttribute('result','blur');
+  const merge=mkEl('feMerge');
+  [['blur'],['SourceGraphic']].forEach(([inRef])=>{
+    const mn=mkEl('feMergeNode'); mn.setAttribute('in',inRef); merge.appendChild(mn);
+  });
+  filt.appendChild(blur); filt.appendChild(merge); defs.appendChild(filt);
+  svg.appendChild(defs);
+
+  // BG + dot grid pattern
+  const dotPat=mkEl('pattern'); dotPat.id='dotGrid'; dotPat.setAttribute('width','22'); dotPat.setAttribute('height','22'); dotPat.setAttribute('patternUnits','userSpaceOnUse');
+  const dotC=mkEl('circle'); dotC.setAttribute('cx','11'); dotC.setAttribute('cy','11'); dotC.setAttribute('r','0.9'); dotC.setAttribute('fill','#d8dde8'); dotPat.appendChild(dotC); defs.appendChild(dotPat);
+  const bgRect=mkEl('rect'); bgRect.setAttribute('width',W); bgRect.setAttribute('height',H); bgRect.setAttribute('fill','#f8faff'); svg.appendChild(bgRect);
+  const dotBg=mkEl('rect'); dotBg.setAttribute('width',W); dotBg.setAttribute('height',H); dotBg.setAttribute('fill','url(#dotGrid)'); dotBg.style.opacity='0.7'; svg.appendChild(dotBg);
+
+  // Transform group
+  const g=mkEl('g'); g.id='tg'; updateSvgTransform(g); svg.appendChild(g);
+
+  // Single subtle adviser ring guide — clients are organic, no ring 2 guide
+  const advGuide=mkEl('circle');
+  advGuide.setAttribute('cx',CX); advGuide.setAttribute('cy',CY); advGuide.setAttribute('r',RADII[1]);
+  advGuide.setAttribute('fill','none'); advGuide.setAttribute('stroke','#e8ebf4');
+  advGuide.setAttribute('stroke-width','1'); g.appendChild(advGuide);
+
+  // Subtle sector fills — adviser territories, large soft wedge
+  ADVISORS.forEach(adv=>{
+    const aNode=allNodes.find(n=>n.id===adv.id);
+    if(!aNode) return;
+    const R=460, a0=aNode.arcStart, a1=aNode.arcEnd;
+    const x0=CX+R*Math.cos(a0), y0=CY+R*Math.sin(a0);
+    const x1=CX+R*Math.cos(a1), y1=CY+R*Math.sin(a1);
+    const sector=mkEl('path');
+    sector.setAttribute('d',`M${CX},${CY} L${x0},${y0} A${R},${R} 0 0,1 ${x1},${y1} Z`);
+    sector.style.fill=adv.color; sector.style.opacity='0.025';
+    sector.style.pointerEvents='none';
+    g.insertBefore(sector, g.firstChild); // behind everything
+  });
+
+  // Connection lines — curved bezier for adviser→client (neural look), straight for rest
+  const connG=mkEl('g'); connG.id='connG'; g.appendChild(connG);
+  allConns.forEach(conn=>{
+    const fn=allNodes.find(n=>n.id===conn.from);
+    const tn=allNodes.find(n=>n.id===conn.to);
+    if(!fn||!tn||fn.x==null||tn.x==null) return;
+    const isAdvToClient=fn.ring===1&&tn.ring===2;
+    let el;
+    if(isAdvToClient){
+      // Cubic bezier: branch smoothly from adviser toward client
+      // cp1 near adviser projected outward, cp2 near client pulled inward
+      const dx=tn.x-fn.x, dy=tn.y-fn.y;
+      const len=Math.sqrt(dx*dx+dy*dy)||1;
+      const cp1x=fn.x+dx*0.35; const cp1y=fn.y+dy*0.35;
+      const cp2x=tn.x-dx*0.18; const cp2y=tn.y-dy*0.18;
+      el=mkEl('path');
+      el.setAttribute('d',`M${fn.x},${fn.y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${tn.x},${tn.y}`);
+      el.setAttribute('fill','none');
+      el.style.stroke=conn.color;
+      el.style.strokeWidth='0.9';
+    } else {
+      el=mkEl('line');
+      el.setAttribute('x1',fn.x); el.setAttribute('y1',fn.y);
+      el.setAttribute('x2',tn.x); el.setAttribute('y2',tn.y);
+      el.style.stroke=conn.color;
+      el.style.strokeWidth=fn.ring===0?'1.5':fn.ring===2?'0.8':'0.5';
+    }
+    el.classList.add('conn-line');
+    connG.appendChild(el);
+    connMap.set(conn.from+'|'+conn.to,{data:conn,el});
+  });
+
+  // Node groups (render outer rings first, inner rings on top)
+  const nodeG=mkEl('g'); nodeG.id='nodeG'; g.appendChild(nodeG);
+  const sorted=[...allNodes].sort((a,b)=>b.ring-a.ring);
+
+  sorted.forEach(node=>{
+    if(node.x==null) return;
+    const ng=mkEl('g');
+    ng.classList.add('node-g');
+    ng.dataset.id=node.id; ng.dataset.type=node.type;
+
+    const r=SIZES[node.type]||8;
+    const color=node.type==='client'?clientColor(node):(node.color||'#94a3b8');
+
+    if(node.type==='category'){
+      // ── Category hub: hollow circle with label ──
+      const bgC=mkEl('circle');
+      bgC.setAttribute('cx',node.x); bgC.setAttribute('cy',node.y); bgC.setAttribute('r',r);
+      bgC.style.fill=color+'1a'; bgC.style.stroke=color; bgC.style.strokeWidth='1.8px';
+      ng.appendChild(bgC);
+      const t=mkEl('text');
+      t.setAttribute('x',node.x); t.setAttribute('y',node.y);
+      t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central');
+      t.style.fill=color; t.style.fontSize='5px'; t.style.fontWeight='800';
+      t.style.fontFamily='-apple-system,sans-serif'; t.style.pointerEvents='none';
+      t.textContent=CATEGORY_META[node.catKey].short;
+      ng.appendChild(t);
+
+    } else if(node.type==='task'){
+      const rect=mkEl('rect');
+      rect.setAttribute('x',node.x-r); rect.setAttribute('y',node.y-r);
+      rect.setAttribute('width',r*2); rect.setAttribute('height',r*2); rect.setAttribute('rx','2');
+      rect.style.fill=color; rect.style.stroke='#fff'; rect.style.strokeWidth='0.5px';
+      ng.appendChild(rect);
+
+    } else if(node.type==='investment'){
+      const rect=mkEl('rect');
+      rect.setAttribute('x',node.x-r); rect.setAttribute('y',node.y-r);
+      rect.setAttribute('width',r*2); rect.setAttribute('height',r*2); rect.setAttribute('rx','3');
+      rect.style.fill=color; rect.style.stroke='#fff'; rect.style.strokeWidth='1px';
+      ng.appendChild(rect);
+
+    } else if(node.type==='entity'){
+      const rect=mkEl('rect');
+      rect.setAttribute('x',node.x-r*0.85); rect.setAttribute('y',node.y-r*0.85);
+      rect.setAttribute('width',r*1.7); rect.setAttribute('height',r*1.7); rect.setAttribute('rx','2');
+      rect.style.fill=color; rect.style.stroke='#fff'; rect.style.strokeWidth='1px';
+      rect.setAttribute('transform',`rotate(45,${node.x},${node.y})`);
+      ng.appendChild(rect);
+
+    } else if(node.type==='goal'){
+      const pts=`${node.x},${node.y-r} ${node.x+r},${node.y} ${node.x},${node.y+r} ${node.x-r},${node.y}`;
+      const poly=mkEl('polygon');
+      poly.setAttribute('points',pts);
+      poly.style.fill='#fbbf24'; poly.style.stroke='#fff'; poly.style.strokeWidth='1px';
+      ng.appendChild(poly);
+
+    } else {
+      // ── Circles: practice, advisor, client, super, property, insurance ──
+
+      // Client: urgent pulse ring + status ring
+      // Hover glow ring — tight, subtle
+      const gRing=mkEl('circle');
+      gRing.setAttribute('cx',node.x); gRing.setAttribute('cy',node.y); gRing.setAttribute('r',r+4);
+      gRing.style.fill='none'; gRing.style.stroke=color; gRing.style.strokeWidth='1.5px'; gRing.style.opacity='0';
+      gRing.classList.add('glow-ring');
+      ng.appendChild(gRing);
+
+      // Main circle — status encoded as thin border stroke
+      const circle=mkEl('circle');
+      circle.setAttribute('cx',node.x); circle.setAttribute('cy',node.y); circle.setAttribute('r',r);
+      circle.style.fill=color;
+      if(node.type==='client'){
+        const sc=STATUS_COLOR[node.status]||'#475569';
+        const sw=node.status==='active'?'1.5px':node.status==='review'?'2px':'2.5px';
+        circle.style.stroke=sc; circle.style.strokeWidth=sw;
+        if(node.status==='risk'){
+          circle.classList.add('urgent-pulse');
+        }
+      } else {
+        circle.style.stroke='rgba(255,255,255,0.85)';
+        circle.style.strokeWidth=node.ring<=1?'2.5px':'1.5px';
+      }
+      ng.appendChild(circle);
+    }
+
+    // Initials label for large nodes
+    // Initials: practice + adviser only (client nodes are clean dots)
+    if(node.ring<=1){
+      const txt=mkEl('text');
+      txt.setAttribute('x',node.x); txt.setAttribute('y',node.y);
+      txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','central');
+      txt.style.fill='#ffffff';
+      txt.style.fontSize=node.ring===0?'11px':'9px';
+      txt.style.fontWeight='700'; txt.style.fontFamily='Inter,sans-serif';
+      txt.style.pointerEvents='none'; txt.style.userSelect='none';
+      txt.textContent=node.initials||(node.name||'').slice(0,2).toUpperCase();
+      ng.appendChild(txt);
+    }
+
+    // Advisor: photo overlay (covers initials when loaded; falls back to initials)
+    if(node.type==='advisor' && ADVISOR_PHOTOS[node.id]){
+      const r=SIZES.advisor;
+      const clipId=`pc-${node.id}`;
+      const cp=mkEl('clipPath'); cp.setAttribute('id',clipId);
+      const cpc=mkEl('circle'); cpc.setAttribute('cx',node.x); cpc.setAttribute('cy',node.y); cpc.setAttribute('r',r-1.5);
+      cp.appendChild(cpc); defs.appendChild(cp);
+      const img=mkEl('image');
+      img.setAttribute('href',ADVISOR_PHOTOS[node.id]);
+      img.setAttribute('x',node.x-(r-1.5)); img.setAttribute('y',node.y-(r-1.5));
+      img.setAttribute('width',(r-1.5)*2); img.setAttribute('height',(r-1.5)*2);
+      img.setAttribute('clip-path',`url(#${clipId})`);
+      img.setAttribute('preserveAspectRatio','xMidYMid slice');
+      img.style.pointerEvents='none';
+      ng.appendChild(img);
+      // White border on top of photo
+      const brd=mkEl('circle'); brd.setAttribute('cx',node.x); brd.setAttribute('cy',node.y); brd.setAttribute('r',r-1.5);
+      brd.style.fill='none'; brd.style.stroke='rgba(255,255,255,0.9)'; brd.style.strokeWidth='2px'; brd.style.pointerEvents='none';
+      ng.appendChild(brd);
+    }
+
+    // Client name label — hidden by default, shown on hover/select via CSS
+    if(node.type==='client'){
+      const r=SIZES.client;
+      const nl=mkEl('text');
+      nl.setAttribute('x',node.x); nl.setAttribute('y',node.y+r+9);
+      nl.setAttribute('text-anchor','middle');
+      nl.style.fill='#cbd5e1'; nl.style.fontSize='7px'; nl.style.fontFamily='Inter,sans-serif'; nl.style.fontWeight='500';
+      nl.style.pointerEvents='none'; nl.style.opacity='0';
+      nl.classList.add('client-label');
+      nl.textContent=(node.name||'').split(' ').slice(-1)[0]; // last name only
+      ng.appendChild(nl);
+    }
+
+    // Ring 3/4 nodes hidden until a client is clicked
+    if(node.ring>=3) ng.classList.add('deep-hidden');
+
+    // Staggered entrance animation (only for visible rings)
+    if(node.ring<3){
+      const ringDelay=RING_DELAY[node.ring]||0;
+      ng.style.animationDelay=`${ringDelay+Math.random()*120}ms`;
+      ng.classList.add('entering');
+      ng.addEventListener('animationend',()=>{
+        ng.classList.remove('entering');
+        ng.style.animationDelay='';
+      },{once:true});
+    }
+
+    ng.addEventListener('mouseenter',()=>onHoverNode(node.id));
+    ng.addEventListener('mouseleave',onUnhoverNode);
+    ng.addEventListener('click',e=>{e.stopPropagation();onClickNode(node.id);});
+
+    nodeG.appendChild(ng);
+    nodeMap.set(node.id,{data:node,el:ng});
+  });
+
+  // Advisor name labels
+  ADVISORS.forEach(adv=>{
+    const aNode=allNodes.find(n=>n.id===adv.id);
+    if(!aNode) return;
+    const lr=RADII[1]+38;
+    const txt=mkEl('text');
+    txt.setAttribute('x',CX+lr*Math.cos(aNode.angle)); txt.setAttribute('y',CY+lr*Math.sin(aNode.angle));
+    txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','central');
+    txt.style.fill=adv.color; txt.style.fontSize='9.5px'; txt.style.fontWeight='600';
+    txt.style.fontFamily='-apple-system,sans-serif'; txt.style.pointerEvents='none';
+    txt.textContent=adv.name;
+    g.appendChild(txt);
+  });
+
+  setupZoomPan();
+  applyFilter(activeFilter);
+}
+
+function mkEl(tag){ return document.createElementNS('http://www.w3.org/2000/svg',tag); }
+
+// ═══════════════════════════════════════════════════
+//  HOVER  (class-based, no re-render)
+// ═══════════════════════════════════════════════════
+let hoverTimeout=null;
+
+function onHoverNode(id){
+  clearTimeout(hoverTimeout);
+  const node=allNodes.find(n=>n.id===id);
+  if(!node) return;
+
+  // Direct connections only (immediate neighbours)
+  const connectedIds=new Set([id]);
+  allConns.forEach(c=>{
+    if(c.from===id) connectedIds.add(c.to);
+    if(c.to===id)   connectedIds.add(c.from);
+  });
+
+  nodeMap.forEach((entry,nid)=>{
+    const el=entry.el;
+    el.classList.remove('hovered','faded');
+    if(nid===id)               el.classList.add('hovered');
+    else if(!connectedIds.has(nid)) el.classList.add('faded');
+  });
+
+  const entry=nodeMap.get(id);
+  if(entry){ const gr=entry.el.querySelector('.glow-ring'); if(gr) gr.style.opacity='0.5'; }
+
+  connMap.forEach(({data,el})=>{
+    el.classList.remove('highlight','faded');
+    const revealed=el.classList.contains('revealed');
+    if(data.from===id||data.to===id){
+      // Only highlight lines that are already visible — don't surface lines to deep-hidden nodes
+      if(revealed){ el.classList.add('highlight'); el.style.stroke=data.color+'ee'; }
+    } else if(revealed){
+      el.classList.add('faded');
+    }
+    // unrevealed lines stay at opacity:0 regardless
+  });
+
+  showTooltip(node);
+}
+
+function onUnhoverNode(){
+  hoverTimeout=setTimeout(()=>{
+    nodeMap.forEach(({el})=>{
+      el.classList.remove('hovered','faded');
+      const gr=el.querySelector('.glow-ring'); if(gr) gr.style.opacity='0';
+    });
+    connMap.forEach(({data,el})=>{
+      el.classList.remove('highlight','faded');
+      el.style.stroke=data.color;
+    });
+    hideTooltip();
+  },60);
+}
+
+// ═══════════════════════════════════════════════════
+//  FILTER
+// ═══════════════════════════════════════════════════
+function applyFilter(filter){
+  activeFilter=filter;
+  nodeMap.forEach(({data,el})=> el.classList.toggle('dim',!nodeMatchesFilter(data,filter)));
+  connMap.forEach(({data,el})=>{
+    const fn=allNodes.find(n=>n.id===data.from);
+    const tn=allNodes.find(n=>n.id===data.to);
+    el.classList.toggle('dim',!(fn&&tn&&nodeMatchesFilter(fn,filter)&&nodeMatchesFilter(tn,filter)));
+  });
+}
+
+function nodeMatchesFilter(node,filter){
+  if(filter==='all') return true;
+  if(node.type==='practice') return true;
+
+  // Segment / advisor / status filters: propagate through hierarchy
+  if(filter.startsWith('seg-')){
+    const seg=filter.slice(4);
+    if(node.type==='advisor') return true;
+    const c=node.type==='client'?node:CLIENTS.find(x=>x.id===node.client);
+    return !!(c&&c.segment===seg);
+  }
+  if(filter.startsWith('adv-')){
+    const aid=filter.slice(4);
+    if(node.type==='advisor') return node.id===aid;
+    const c=node.type==='client'?node:CLIENTS.find(x=>x.id===node.client);
+    return !!(c&&c.advisor===aid);
+  }
+  if(filter.startsWith('status-')){
+    const s=filter.slice(7);
+    if(node.type==='advisor') return true;
+    const c=node.type==='client'?node:CLIENTS.find(x=>x.id===node.client);
+    return !!(c&&c.status===s);
+  }
+
+  // Category key → match category hub + its leaves
+  const catKeyFilter={'super':'super','investments':'investments','property':'property',
+                       'entities':'entities','insurance':'insurance','goals':'goals','tasks':'tasks'};
+  if(catKeyFilter[filter]){
+    const key=catKeyFilter[filter];
+    if(node.type==='category') return node.catKey===key;
+    if(node.type==='advisor')  return true;
+    if(node.type==='client')   return allNodes.some(n=>n.type==='category'&&n.catKey===key&&n.client===node.id);
+    // leaf types
+    const leafTypeMap={super:'super',investments:'investment',property:'property',
+                       entities:'entity',insurance:'insurance',goals:'goal',tasks:'task'};
+    return node.type===leafTypeMap[key];
+  }
+  if(filter==='advisor') return node.type==='advisor';
+  if(filter==='client')  return node.type==='client';
+
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+//  CLUSTER  (click-zoom + dim everything else)
+// ═══════════════════════════════════════════════════
+function getClusterIds(nodeId){
+  const node=allNodes.find(n=>n.id===nodeId);
+  if(!node) return new Set(allNodes.map(n=>n.id));
+  const ids=new Set();
+
+  if(node.type==='practice'){ allNodes.forEach(n=>ids.add(n.id)); return ids; }
+
+  if(node.type==='advisor'){
+    ids.add('practice'); ids.add(nodeId);
+    CLIENTS.filter(c=>c.advisor===nodeId).forEach(c=>addClientBranch(c.id,ids));
+    return ids;
+  }
+
+  // Client / category / leaf → full client tree + its advisor + practice
+  const clientId=node.type==='client'?nodeId:node.client;
+  if(clientId){
+    ids.add('practice');
+    const client=CLIENTS.find(c=>c.id===clientId);
+    if(client) ids.add(client.advisor);
+    addClientBranch(clientId,ids);
+  }
+  return ids;
+}
+
+function addClientBranch(cid,ids){
+  ids.add(cid);
+  allNodes.filter(n=>n.type==='category'&&n.client===cid).forEach(cat=>{
+    ids.add(cat.id);
+    allNodes.filter(leaf=>leaf.catId===cat.id).forEach(leaf=>ids.add(leaf.id));
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  BOUNDS + SPRING ZOOM
+// ═══════════════════════════════════════════════════
+function clampTransform(W,H){
+  const pad=graphR*T.scale*0.55;
+  T.x=Math.max(-graphCX*T.scale-pad+80, Math.min(W-graphCX*T.scale+pad-80, T.x));
+  T.y=Math.max(-graphCY*T.scale-pad+80, Math.min(H-graphCY*T.scale+pad-80, T.y));
+}
+
+function animateTo(tx,ty,scale){
+  cancelAnimationFrame(animRaf); cancelAnimationFrame(zoomRaf); cancelAnimationFrame(momRaf);
+  animRaf=null; vx=0; vy=0; velAnim={x:0,y:0,s:0};
+  const tgt={x:tx,y:ty,s:scale};
+  function step(){
+    velAnim.x=velAnim.x*0.72+(tgt.x-T.x)*0.13;
+    velAnim.y=velAnim.y*0.72+(tgt.y-T.y)*0.13;
+    velAnim.s=velAnim.s*0.72+(tgt.s-T.scale)*0.13;
+    T.x+=velAnim.x; T.y+=velAnim.y; T.scale+=velAnim.s;
+    currentScale=T.scale; targetScale=T.scale;
+    updateSvgTransform();
+    if(Math.abs(velAnim.x)>0.15||Math.abs(velAnim.y)>0.15||Math.abs(velAnim.s)>0.0004)
+      animRaf=requestAnimationFrame(step);
+    else{ T.x=tgt.x;T.y=tgt.y;T.scale=tgt.s; currentScale=targetScale=tgt.s; updateSvgTransform(); animRaf=null; }
+  }
+  animRaf=requestAnimationFrame(step);
+}
+
+function zoomToCluster(nodeId){
+  const node=allNodes.find(n=>n.id===nodeId);
+  const clusterIds=getClusterIds(nodeId);
+
+  // minRing: exclude practice center from client/category/leaf zooms (avoids bbox pull)
+  // maxRing: cap which ring we use for bounds so that deep fan nodes don't shrink zoom:
+  //   adviser click  → bound to clients only (ring 2)
+  //   client click   → bound to category hubs (ring 3) — leaves are revealed but don't drive scale
+  //   category/leaf  → include everything
+  const t=node?.type;
+  const minRing = t==='practice' ? 0 : 2;
+  const maxRing = t==='advisor'  ? 2
+                : t==='client'   ? 3
+                : 99;
+
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  clusterIds.forEach(id=>{
+    const n=allNodes.find(x=>x.id===id);
+    const r_=(n?.ring??0);
+    if(!n||n.x==null||r_<minRing||r_>maxRing) return;
+    const r=(SIZES[n.type]||8)+4;
+    minX=Math.min(minX,n.x-r); maxX=Math.max(maxX,n.x+r);
+    minY=Math.min(minY,n.y-r); maxY=Math.max(maxY,n.y+r);
+  });
+  if(!isFinite(minX)) return;
+
+  const depth=node?.ring??0;
+  const pad=depth>=3?32:42;
+  minX-=pad; maxX+=pad; minY-=pad; maxY+=pad;
+
+  const W=document.getElementById('mainSvg').clientWidth||900;
+  const H=document.getElementById('mainSvg').clientHeight||600;
+  const newScale=Math.min(W/(maxX-minX),H/(maxY-minY),MAX_SCALE)*0.88;
+  animateTo(W/2-((minX+maxX)/2)*newScale, H/2-((minY+maxY)/2)*newScale, newScale);
+  showResetBtn(true);
+}
+
+// Fit rings 0–2 tightly to the canvas — used for initial view and reset
+function zoomToPractice(){
+  const svg=document.getElementById('mainSvg');
+  const W=svg.clientWidth||900, H=svg.clientHeight||600;
+  // Fit to actual furthest client — organic layout has no fixed ring
+  const maxDist=allNodes.filter(n=>n.ring===2).reduce((m,n)=>{
+    const d=Math.sqrt((n.x-graphCX)**2+(n.y-graphCY)**2); return d>m?d:m;
+  },0)||420;
+  const extent=maxDist+18;
+  const s=Math.min(W,H)*0.88/(extent*2);
+  const clamped=Math.max(0.4,Math.min(s,MAX_SCALE));
+  animateTo(W/2-graphCX*clamped, H/2-graphCY*clamped, clamped);
+  showResetBtn(false);
+}
+
+function resetZoom(){ zoomToPractice(); }
+function showResetBtn(show){
+  const b=document.getElementById('resetBtn');
+  b.style.opacity=show?'1':'0'; b.style.pointerEvents=show?'auto':'none';
+}
+
+// ═══════════════════════════════════════════════════
+//  CLICK → ZOOM + DIM + DETAIL
+// ═══════════════════════════════════════════════════
+function onClickNode(id){
+  if(selectedId===id){
+    // Deselect — collapse everything back
+    selectedId=null;
+    nodeMap.forEach(({data,el})=>{
+      el.classList.remove('selected','dim');
+      if(data.ring>=3) el.classList.add('deep-hidden');
+    });
+    connMap.forEach(({data,el})=>{ el.classList.remove('dim','revealed'); el.style.stroke=data.color; });
+    closeDetail(); applyFilter(activeFilter); resetZoom();
+    return;
+  }
+  selectedId=id;
+  nodeMap.forEach(({el})=>el.classList.remove('selected'));
+  const selEntry=nodeMap.get(id);
+  if(selEntry) selEntry.el.classList.add('selected');
+  const node=allNodes.find(n=>n.id===id);
+  openDetail(node);
+
+  const clusterIds=getClusterIds(id);
+  // Which client's branch to reveal (null for advisor / practice)
+  const revealClientId = node.type==='client' ? id : (node.client||null);
+
+  nodeMap.forEach(({data,el},nid)=>{
+    el.classList.remove('dim','deep-hidden');
+    if(data.ring>=3 && data.client!==revealClientId){
+      // Other clients' branches stay invisible and non-interactive
+      el.classList.add('deep-hidden');
+    } else if(!clusterIds.has(nid)){
+      el.classList.add('dim');
+    }
+  });
+  // Re-stamp selected
+  if(selEntry) selEntry.el.classList.add('selected');
+
+  connMap.forEach(({data,el})=>{
+    el.classList.remove('dim','revealed');
+    const inCluster=clusterIds.has(data.from)&&clusterIds.has(data.to);
+    if(inCluster){
+      const fn=allNodes.find(n=>n.id===data.from);
+      const tn=allNodes.find(n=>n.id===data.to);
+      const fromHidden=fn&&fn.ring>=3&&fn.client!==revealClientId;
+      const toHidden  =tn&&tn.ring>=3&&tn.client!==revealClientId;
+      if(!fromHidden&&!toHidden){ el.classList.add('revealed'); el.style.stroke=data.color+'cc'; }
+    } else {
+      el.classList.add('dim');
+    }
+  });
+
+  zoomToCluster(id);
+}
+
+// ═══════════════════════════════════════════════════
+//  DETAIL PANEL
+// ═══════════════════════════════════════════════════
+function openDetail(node){
+  if(!node) return;
+  const dp=document.getElementById('detailPanel');
+  const av=document.getElementById('dpAvatar');
+  const nm=document.getElementById('dpName');
+  const sb=document.getElementById('dpSub');
+  const body=document.getElementById('dpBody');
+  const color=node.type==='client'?clientColor(node):(node.color||'#6366f1');
+  av.style.background=`linear-gradient(135deg,${color}cc,${color})`;
+  av.textContent=node.initials||(node.name||'').slice(0,2).toUpperCase();
+  nm.textContent=node.name;
+
+  if(node.type==='advisor'){
+    const myClients=CLIENTS.filter(c=>c.advisor===node.id);
+    const totalAUM=myClients.reduce((s,c)=>s+c.aum,0);
+    sb.textContent=node.title;
+    body.innerHTML=`
+      <div class="metrics">
+        <div class="mc"><div class="ml">Clients</div><div class="mv">${myClients.length}</div></div>
+        <div class="mc"><div class="ml">Total AUM</div><div class="mv g">$${(totalAUM/1e6).toFixed(1)}M</div></div>
+        <div class="mc"><div class="ml">Reviews Due</div><div class="mv a">${myClients.filter(c=>c.status==='review').length}</div></div>
+        <div class="mc"><div class="ml">At Risk</div><div class="mv r">${myClients.filter(c=>c.status==='risk').length}</div></div>
+      </div>
+      <div class="ds"><div class="dsh">Clients</div>${myClients.map(c=>`
+        <div class="dli" style="cursor:pointer" onclick="onClickNode('${c.id}')">
+          <div class="dlb" style="background:${clientColor(c)};border-radius:50%"></div>
+          <div class="dlt">${c.name}</div>
+          <div class="dlm">$${(c.aum/1e6).toFixed(1)}M</div>
+        </div>`).join('')}
+      </div>`;
+
+  } else if(node.type==='client'){
+    const adv=ADVISORS.find(a=>a.id===node.advisor);
+    const superFunds = PORTFOLIOS.filter(p=>p.client===node.id&&['Super','SMSF'].includes(p.ptype));
+    const invFunds   = PORTFOLIOS.filter(p=>p.client===node.id&&!['Super','SMSF'].includes(p.ptype));
+    const props      = PROPERTIES.filter(p=>p.client===node.id);
+    const ents       = ENTITIES.filter(e=>e.client===node.id);
+    const goals      = GOALS.filter(g=>g.client===node.id);
+    const ins        = INSURANCE.filter(i=>i.client===node.id);
+    const tasks      = TASKS.filter(t=>t.client===node.id);
+    const urgentTasks= tasks.filter(t=>t.status==='overdue');
+    const soaC = node.soaStatus==='Current'?'#16a34a':node.soaStatus==='Overdue'?'#dc2626':'#d97706';
+    const soaBg= node.soaStatus==='Current'?'#f0fdf4':node.soaStatus==='Overdue'?'#fef2f2':'#fffbeb';
+    const soaBd= node.soaStatus==='Current'?'#bbf7d0':node.soaStatus==='Overdue'?'#fecaca':'#fde68a';
+    const segBadge = node.segment==='HNW'?'b-amber':node.segment==='MA'?'b-green':'b-indigo';
+    sb.innerHTML=`<span class="badge ${segBadge}">Tier ${node.tier||node.segment}</span>&nbsp;${adv?.name||''}`;
+    body.innerHTML=`
+      <!-- Compliance strip -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:11px">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 7px">
+          <div style="font-size:8.5px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Last Reviewed</div>
+          <div style="font-size:11px;font-weight:600;color:#1e293b;margin-top:1px">${node.lastReview||'—'}</div>
+        </div>
+        <div style="background:${node.consentSigned?'#f0fdf4':'#fef2f2'};border:1px solid ${node.consentSigned?'#bbf7d0':'#fecaca'};border-radius:7px;padding:6px 7px">
+          <div style="font-size:8.5px;color:${node.consentSigned?'#15803d':'#dc2626'};font-weight:700;text-transform:uppercase;letter-spacing:.05em">Annual Consent</div>
+          <div style="font-size:11px;font-weight:600;color:${node.consentSigned?'#15803d':'#dc2626'};margin-top:1px">${node.consentSigned?'Signed ✓':'Outstanding ✗'}</div>
+        </div>
+        <div style="background:${soaBg};border:1px solid ${soaBd};border-radius:7px;padding:6px 7px">
+          <div style="font-size:8.5px;color:${soaC};font-weight:700;text-transform:uppercase;letter-spacing:.05em">SOA/ROA</div>
+          <div style="font-size:11px;font-weight:600;color:${soaC};margin-top:1px">${node.soaStatus||'—'}</div>
+        </div>
+      </div>
+      <!-- Key metrics -->
+      <div class="metrics">
+        <div class="mc"><div class="ml">AUM</div><div class="mv g">$${(node.aum/1e6).toFixed(2)}M</div></div>
+        <div class="mc"><div class="ml">Risk Profile</div><div class="mv" style="font-size:11px">${node.risk}</div></div>
+        <div class="mc"><div class="ml">Next Review</div><div class="mv a" style="font-size:11px">${node.reviewDate}</div></div>
+        <div class="mc"><div class="ml">DOB</div><div class="mv" style="font-size:11px">${node.dob||'—'}</div></div>
+      </div>
+      <!-- Fee + flags -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+        <span style="background:#eef2ff;color:#4338ca;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px">${node.feeType||''} Fee</span>
+        <span style="background:#f8fafc;color:#475569;font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid #e2e8f0">${node.feeAmount||''}</span>
+        ${node.centrelink?`<span style="background:#ecfdf5;color:#065f46;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px">Centrelink ✓</span>`:''}
+        ${urgentTasks.length?`<span style="background:#fef2f2;color:#dc2626;font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px">⚠ ${urgentTasks.length} Urgent</span>`:''}
+      </div>
+      ${superFunds.length?`<div class="ds"><div class="dsh">Superannuation · $${(superFunds.reduce((s,p)=>s+p.value,0)/1000).toFixed(0)}K total</div>${superFunds.map(p=>`<div class="dli"><div class="dlb" style="background:${p.color}"></div><div class="dlt">${p.name}</div><div class="dlm" style="color:#16a34a;font-weight:600">${p.perf}</div></div>`).join('')}</div>`:''}
+      ${invFunds.length?`<div class="ds"><div class="dsh">Investments · $${(invFunds.reduce((s,p)=>s+p.value,0)/1000).toFixed(0)}K total</div>${invFunds.map(p=>`<div class="dli"><div class="dlb" style="background:${p.color};border-radius:2px"></div><div class="dlt">${p.name}</div><div class="dlm" style="color:#16a34a;font-weight:600">${p.perf}</div></div>`).join('')}</div>`:''}
+      ${props.length?`<div class="ds"><div class="dsh">Property · $${(props.reduce((s,p)=>s+p.value,0)/1000).toFixed(0)}K value</div>${props.map(p=>`<div class="dli"><div class="dlb" style="background:${p.color};border-radius:50%"></div><div class="dlt">${p.name}<span style="font-size:10px;color:#94a3b8;margin-left:4px">${p.suburb||''}</span></div><div class="dlm">$${(p.equity/1000).toFixed(0)}K eq</div></div>`).join('')}</div>`:''}
+      ${ents.length?`<div class="ds"><div class="dsh">Entities</div>${ents.map(e=>`<div class="dli"><div class="dlb" style="background:${e.color};transform:rotate(45deg)"></div><div class="dlt">${e.name}</div><div class="dlm">${e.etype}</div></div>`).join('')}</div>`:''}
+      ${ins.length?`<div class="ds"><div class="dsh">Insurance</div>${ins.map(i=>`<div class="dli"><div class="dlb" style="background:${i.color};border-radius:50%"></div><div class="dlt">${i.name}</div><div class="dlm">${i.premium}</div></div>`).join('')}</div>`:''}
+      ${goals.length?`<div class="ds"><div class="dsh">Goals</div>${goals.map(g=>`<div class="dli"><div class="dlb" style="background:#fbbf24;transform:rotate(45deg)"></div><div class="dlt">${g.name}</div><div class="dlm">${g.progress}%</div></div>`).join('')}</div>`:''}
+      ${tasks.length?`<div class="ds"><div class="dsh">Tasks & Compliance</div>${tasks.map(t=>`<div class="dli"><div class="dlb" style="background:${t.color}"></div><div class="dlt">${t.name}<span style="font-size:9.5px;color:#94a3b8;margin-left:5px">${t.ttype}</span></div><div class="dlm" style="${t.status==='overdue'?'color:#ef4444;font-weight:700':t.status==='in-progress'?'color:#6366f1;font-weight:600':''}">${t.status==='overdue'?'⚠ '+t.due:t.status==='in-progress'?'● '+t.due:t.due}</div></div>`).join('')}</div>`:''}
+      ${node.notes?`<div class="ds"><div class="dsh">Notes</div><p style="font-size:12px;color:#64748b;line-height:1.5;margin:0">${node.notes}</p></div>`:''}
+      <div class="dp-actions">
+        <div class="dp-act"><div class="da-icon">✉</div><div class="da-lbl">Email</div></div>
+        <div class="dp-act"><div class="da-icon">📅</div><div class="da-lbl">Schedule</div></div>
+        <div class="dp-act"><div class="da-icon">📋</div><div class="da-lbl">SOA/ROA</div></div>
+        <div class="dp-act"><div class="da-icon">↗</div><div class="da-lbl">Full Profile</div></div>
+      </div>
+      <div class="dp-mm-btn" id="openMindMap">⬡ Open Client Mind Map</div>`;
+    document.getElementById('openMindMap').onclick=()=>openClientMindMap(node.id);
+
+  } else if(node.type==='category'){
+    const meta=CATEGORY_META[node.catKey];
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${meta.label} · ${c?.name||''}`;
+    av.style.background=`linear-gradient(135deg,${meta.color}99,${meta.color})`;
+    av.textContent=meta.short.slice(0,2);
+    const leaves=allNodes.filter(n=>n.catId===node.id);
+    body.innerHTML=`<div class="ds"><div class="dsh">${leaves.length} ${meta.label} item${leaves.length!==1?'s':''}</div>${
+      leaves.map(l=>`<div class="dli" style="cursor:pointer" onclick="onClickNode('${l.id}')">
+        <div class="dlb" style="background:${l.color||meta.color};border-radius:50%"></div>
+        <div class="dlt">${l.name}</div>
+        <div class="dlm" style="color:${meta.color}">${l.perf||l.premium||l.target||l.due||l.etype||l.ptype||''}</div>
+      </div>`).join('')
+    }</div>`;
+
+  } else if(node.type==='super'||node.type==='investment'){
+    const p=PORTFOLIOS.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${p?.ptype||node.type} · ${c?.name||''}`;
+    const isSMSF=p?.ptype==='SMSF';
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Balance</div><div class="mv g">$${((p?.value||0)/1000).toFixed(0)}K</div></div>
+      <div class="mc"><div class="ml">1yr Return</div><div class="mv g">${p?.perf||'—'}</div></div>
+      <div class="mc"><div class="ml">Type</div><div class="mv" style="font-size:11px">${p?.ptype||''}</div></div>
+      <div class="mc"><div class="ml">FY26 Cap</div><div class="mv" style="font-size:11px">${isSMSF?'$110K CC':'$30K CC'}</div></div>
+    </div>
+    ${isSMSF?`<div class="ds"><div class="dsh">SMSF Notes</div><p style="font-size:12px;color:#64748b;line-height:1.5;margin:0">Annual audit required. Investment strategy review each FY. Trustee obligations apply.</p></div>`:''}
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+      <span style="background:#f0fdf4;color:#166534;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px">${p?.ptype||''}</span>
+      ${isSMSF?`<span style="background:#eff6ff;color:#1e40af;font-size:11px;padding:3px 8px;border-radius:5px">SMSF Trustee</span>`:''}
+    </div>`;
+
+  } else if(node.type==='property'){
+    const p=PROPERTIES.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${p?.ptype||'Property'} · ${c?.name||''}`;
+    const lvr=p?.mortgage&&p?.value?Math.round(p.mortgage/p.value*100):0;
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Est. Value</div><div class="mv" style="color:#8b5cf6">$${((p?.value||0)/1000).toFixed(0)}K</div></div>
+      <div class="mc"><div class="ml">Equity</div><div class="mv g">$${((p?.equity||0)/1000).toFixed(0)}K</div></div>
+      <div class="mc"><div class="ml">Mortgage</div><div class="mv" style="font-size:12px">${p?.mortgage?'$'+(p.mortgage/1000).toFixed(0)+'K':'Nil'}</div></div>
+      <div class="mc"><div class="ml">LVR</div><div class="mv" style="font-size:12px;color:${lvr>80?'#dc2626':lvr>60?'#d97706':'#16a34a'}">${lvr?lvr+'%':'—'}</div></div>
+    </div>
+    ${p?.suburb?`<div style="display:flex;gap:5px;margin-top:4px"><span style="background:#f5f3ff;color:#6d28d9;font-size:11px;padding:3px 8px;border-radius:5px">📍 ${p.suburb}</span><span style="background:#f8fafc;color:#64748b;font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid #e2e8f0">${p?.ptype||''}</span></div>`:''}`;
+
+  } else if(node.type==='entity'){
+    const e=ENTITIES.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${e?.etype||'Entity'} · ${c?.name||''}`;
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Structure</div><div class="mv" style="font-size:11px">${e?.etype||''}</div></div>
+      <div class="mc"><div class="ml">Client</div><div class="mv" style="font-size:11px">${c?.name||''}</div></div>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+      <span style="background:#fff7ed;color:#92400e;font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px">${e?.etype||''}</span>
+    </div>`;
+
+  } else if(node.type==='goal'){
+    const g=GOALS.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`Goal · ${c?.name||''}`;
+    const pct=g?.progress||0;
+    const pColor=pct>=75?'#22c55e':pct>=40?'#f59e0b':'#ef4444';
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Target</div><div class="mv" style="font-size:12px">${g?.target||''}</div></div>
+      <div class="mc"><div class="ml">Progress</div><div class="mv" style="color:${pColor};font-weight:700">${pct}%</div></div>
+    </div>
+    <div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;margin:8px 0 4px">
+      <div style="background:${pColor};height:100%;width:${pct}%;border-radius:6px;transition:width 0.8s cubic-bezier(0.4,0,0.2,1)"></div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;text-align:right">${pct}% complete</div>`;
+
+  } else if(node.type==='insurance'){
+    const i=INSURANCE.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${i?.itype||'Insurance'} · ${c?.name||''}`;
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Type</div><div class="mv" style="font-size:11px">${i?.itype||''}</div></div>
+      <div class="mc"><div class="ml">Insurer</div><div class="mv" style="font-size:11px">${i?.insurer||'—'}</div></div>
+      <div class="mc"><div class="ml">Cover</div><div class="mv" style="font-size:11px">${i?.cover||'—'}</div></div>
+      <div class="mc"><div class="ml">Premium</div><div class="mv" style="font-size:11px">${i?.premium||'—'}</div></div>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
+      <span style="background:${i?.inSuper?'#ecfdf5':'#fef2f2'};color:${i?.inSuper?'#065f46':'#991b1b'};font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px">${i?.inSuper?'Inside Super':'Outside Super'}</span>
+      <span style="background:#fef2f2;color:#991b1b;font-size:11px;padding:3px 8px;border-radius:5px">${i?.itype||''}</span>
+    </div>`;
+
+  } else if(node.type==='task'){
+    const t=TASKS.find(x=>x.id===node.id);
+    const c=CLIENTS.find(x=>x.id===node.client);
+    sb.textContent=`${t?.ttype||'Task'} · ${c?.name||''}`;
+    const isOverdue=t?.status==='overdue';
+    const isInProg=t?.status==='in-progress';
+    const stColor=isOverdue?'#dc2626':isInProg?'#6366f1':'#64748b';
+    const stBg=isOverdue?'#fef2f2':isInProg?'#eef2ff':'#f8fafc';
+    const stLabel=isOverdue?'⚠ Overdue':isInProg?'● In Progress':'Pending';
+    body.innerHTML=`<div class="metrics">
+      <div class="mc"><div class="ml">Type</div><div class="mv" style="font-size:11px">${t?.ttype||''}</div></div>
+      <div class="mc"><div class="ml">Due Date</div><div class="mv" style="font-size:11px;color:${isOverdue?'#dc2626':'inherit'}">${t?.due||'—'}</div></div>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
+      <span style="background:${stBg};color:${stColor};font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;border:1px solid ${isOverdue?'#fecaca':isInProg?'#c7d2fe':'#e2e8f0'}">${stLabel}</span>
+      <span style="background:#f5f3ff;color:#6d28d9;font-size:11px;padding:3px 8px;border-radius:5px">${t?.ttype||''}</span>
+    </div>
+    ${['SOA','ROA','FDS'].some(k=>t?.ttype?.includes(k))?`<div class="ds" style="margin-top:10px"><div class="dsh">Compliance Note</div><p style="font-size:11.5px;color:#64748b;line-height:1.5;margin:0">${t?.ttype?.includes('SOA')?'Statement of Advice required. Must document strategy, basis, and client consent before implementation.':t?.ttype?.includes('ROA')?'Record of Advice — documents change to existing strategy. Simpler than SOA but still AFSL-required.':'Fee Disclosure Statement due. Must disclose fees charged and services provided in last 12 months.'}</p></div>`:''}`;
+
+  } else { sb.textContent=node.type; body.innerHTML=''; }
+
+  dp.classList.add('open');
+}
+
+function closeDetail(){
+  document.getElementById('detailPanel').classList.remove('open');
+  nodeMap.forEach(({el})=>el.classList.remove('selected'));
+  selectedId=null;
+}
+function collapseAll(){
+  closeDetail();
+  nodeMap.forEach(({data,el})=>{ el.classList.remove('dim'); if(data.ring>=3) el.classList.add('deep-hidden'); });
+  connMap.forEach(({data,el})=>{ el.classList.remove('dim','revealed'); el.style.stroke=data.color; });
+  applyFilter(activeFilter); resetZoom();
+}
+document.getElementById('dpClose').onclick=collapseAll;
+document.getElementById('mainSvg').addEventListener('click',e=>{
+  if(e.target===document.getElementById('mainSvg')||(e.target.tagName==='rect'&&e.target.getAttribute('fill')==='#f8faff')){
+    if(selectedId) collapseAll();
+  }
+});
+
+// ═══════════════════════════════════════════════════
+//  TOOLTIP
+// ═══════════════════════════════════════════════════
+const tt=document.getElementById('tooltip');
+function showTooltip(node){
+  let label=node.name;
+  if(node.type==='client')     label+=` · ${node.segment} · $${(node.aum/1e6).toFixed(1)}M`;
+  else if(node.type==='super'||node.type==='investment'){
+    const p=PORTFOLIOS.find(x=>x.id===node.id);
+    if(p) label+=` · $${(p.value/1000).toFixed(0)}K · ${p.perf}`;
+  }
+  else if(node.type==='property'){
+    const p=PROPERTIES.find(x=>x.id===node.id);
+    if(p) label+=` · $${(p.value/1000).toFixed(0)}K · ${p.ptype}`;
+  }
+  else if(node.type==='goal'){
+    const g=GOALS.find(x=>x.id===node.id);
+    if(g) label+=` · ${g.target} · ${g.progress}%`;
+  }
+  else if(node.type==='insurance'){
+    const i=INSURANCE.find(x=>x.id===node.id);
+    if(i) label+=` · ${i.premium}`;
+  }
+  else if(node.type==='task'){
+    const t=TASKS.find(x=>x.id===node.id);
+    if(t) label+=` · ${t.due}`;
+  }
+  else if(node.type==='category'){
+    const meta=CATEGORY_META[node.catKey];
+    const count=allNodes.filter(n=>n.catId===node.id).length;
+    label=`${meta.label} (${count})`;
+  }
+  tt.textContent=label; tt.style.display='block'; tt.style.opacity='1';
+}
+function hideTooltip(){ tt.style.opacity='0'; setTimeout(()=>{if(tt.style.opacity==='0')tt.style.display='none';},150); }
+document.addEventListener('mousemove',e=>{
+  if(tt.style.display==='block'){ tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY-32)+'px'; }
+});
+
+// ═══════════════════════════════════════════════════
+//  ZOOM / PAN  (momentum + trackpad fix)
+// ═══════════════════════════════════════════════════
+const MIN_SCALE=0.28, MAX_SCALE=8;
+let T={x:0,y:0,scale:1};
+let dragging=false,lx=0,ly=0,lt=0,vx=0,vy=0,momRaf=null;
+let targetScale=1, currentScale=1, zoomRaf=null;
+let animRaf=null, velAnim={x:0,y:0,s:0};
+let graphCX=600, graphCY=410, graphR=530;
+
+function updateSvgTransform(el){
+  (el||document.getElementById('tg')).setAttribute('transform',`translate(${T.x},${T.y}) scale(${T.scale})`);
+}
+
+function setupZoomPan(){
+  const svg=document.getElementById('mainSvg');
+  svg.onmousedown=e=>{
+    if(e.button!==0) return;
+    cancelAnimationFrame(momRaf); cancelAnimationFrame(animRaf); momRaf=null; animRaf=null;
+    dragging=true; svg.classList.add('dragging');
+    lx=e.clientX; ly=e.clientY; lt=Date.now(); vx=0; vy=0;
+  };
+  window.onmousemove=e=>{
+    if(!dragging) return;
+    const now=Date.now(),dt=Math.max(now-lt,1);
+    const dx=e.clientX-lx, dy=e.clientY-ly;
+    T.x+=dx; T.y+=dy;
+    vx=dx/dt*14; vy=dy/dt*14;
+    lx=e.clientX; ly=e.clientY; lt=now;
+    clampTransform(svg.clientWidth,svg.clientHeight);
+    updateSvgTransform();
+  };
+  window.onmouseup=()=>{
+    if(!dragging) return;
+    dragging=false;
+    document.getElementById('mainSvg')?.classList.remove('dragging');
+    function momentum(){
+      vx*=0.91; vy*=0.91;
+      T.x+=vx; T.y+=vy;
+      clampTransform(svg.clientWidth,svg.clientHeight);
+      updateSvgTransform();
+      if(Math.abs(vx)>0.3||Math.abs(vy)>0.3) momRaf=requestAnimationFrame(momentum);
+    }
+    if(Math.abs(vx)>0.5||Math.abs(vy)>0.5) momentum();
+  };
+  svg.onwheel=e=>{
+    e.preventDefault();
+    cancelAnimationFrame(momRaf); cancelAnimationFrame(animRaf); momRaf=null; animRaf=null;
+    let delta=e.deltaY;
+    if(e.deltaMode===1) delta*=16;
+    if(e.deltaMode===2) delta*=400;
+    delta=Math.sign(delta)*Math.min(Math.abs(delta),55);
+    const factor=Math.pow(0.9965,delta);
+    const prev=targetScale;
+    targetScale=Math.min(Math.max(targetScale*factor,MIN_SCALE),MAX_SCALE);
+    if(targetScale===prev) return;
+    const rect=svg.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const ratio=targetScale/prev;
+    T.x=mx-(mx-T.x)*ratio; T.y=my-(my-T.y)*ratio;
+    clampTransform(svg.clientWidth,svg.clientHeight);
+    if(!zoomRaf){
+      function animZoom(){
+        currentScale+=(targetScale-currentScale)*0.2;
+        T.scale=currentScale; updateSvgTransform();
+        if(Math.abs(targetScale-currentScale)>0.001) zoomRaf=requestAnimationFrame(animZoom);
+        else{ zoomRaf=null; currentScale=targetScale; T.scale=targetScale; updateSvgTransform(); }
+      }
+      zoomRaf=requestAnimationFrame(animZoom);
+    }
+  };
+}
+
+// ═══════════════════════════════════════════════════
+//  CLIENT MIND MAP  (radial spoke view)
+// ═══════════════════════════════════════════════════
+function openClientMindMap(clientId){
+  const client=CLIENTS.find(c=>c.id===clientId);
+  if(!client) return;
+  document.getElementById('practiceView').style.display='none';
+  document.getElementById('clientView').classList.add('visible');
+  document.getElementById('cmTitle').textContent=client.name;
+  const sb=client.segment==='HNW'?'b-amber':client.segment==='MA'?'b-green':'b-indigo';
+  const badge=document.getElementById('cmBadge');
+  badge.className=`badge ${sb}`; badge.textContent=client.segment;
+  closeDetail();
+  renderClientMindMap(client);
+}
+
+function renderClientMindMap(client){
+  const svg=document.getElementById('clientSvg');
+  const W=svg.clientWidth||800, H=svg.clientHeight||520;
+  const CX=W/2, CY=H/2;
+  svg.innerHTML='';
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  const superFunds = PORTFOLIOS.filter(p=>p.client===client.id&&['Super','SMSF'].includes(p.ptype));
+  const invFunds   = PORTFOLIOS.filter(p=>p.client===client.id&&!['Super','SMSF'].includes(p.ptype));
+  const props      = PROPERTIES.filter(p=>p.client===client.id);
+  const ents       = ENTITIES.filter(e=>e.client===client.id);
+  const ins        = INSURANCE.filter(i=>i.client===client.id);
+  const goals      = GOALS.filter(g=>g.client===client.id);
+  const tasks      = TASKS.filter(t=>t.client===client.id);
+  const adv        = ADVISORS.find(a=>a.id===client.advisor);
+
+  const spokes=[
+    {label:'ADVISOR',   color:adv?.color||'#3b82f6', items:[{name:adv?.name||'',sub:adv?.title,color:adv?.color}]},
+    ...(superFunds.length?[{label:'SUPER',      color:'#22c55e', items:superFunds.map(p=>({name:p.name,sub:`$${(p.value/1000).toFixed(0)}K · ${p.perf}`,color:p.color}))}]:[]),
+    ...(invFunds.length? [{label:'INVESTMENTS', color:'#3b82f6', items:invFunds.map(p=>({name:p.name,sub:`$${(p.value/1000).toFixed(0)}K · ${p.perf}`,color:p.color}))}]:[]),
+    ...(props.length?    [{label:'PROPERTY',    color:'#8b5cf6', items:props.map(p=>({name:p.name,sub:`$${(p.value/1000).toFixed(0)}K · ${p.ptype}`,color:p.color}))}]:[]),
+    ...(ents.length?     [{label:'ENTITIES',    color:'#fb923c', items:ents.map(e=>({name:e.name,sub:e.etype,color:e.color}))}]:[]),
+    ...(ins.length?      [{label:'INSURANCE',   color:'#f87171', items:ins.map(i=>({name:i.name,sub:i.premium,color:i.color}))}]:[]),
+    ...(goals.length?    [{label:'GOALS',       color:'#fbbf24', items:goals.map(g=>({name:g.name,sub:`${g.target} · ${g.progress}%`,color:'#fbbf24'}))}]:[]),
+    ...(tasks.length?    [{label:'TASKS',       color:'#c084fc', items:tasks.map(t=>({name:t.name,sub:t.due,color:t.color}))}]:[]),
+  ].filter(s=>s.items.length>0);
+
+  const avail=Math.min(W,H)*0.44;
+  const maxItems=Math.max(...spokes.map(s=>s.items.length),1);
+  const nodeStep=Math.min(70,Math.floor(avail/(maxItems+1.1)));
+  const nodeBase=Math.max(78,Math.min(105,nodeStep*1.3));
+  const nodeR=17;
+
+  const bg=mkEl('rect'); bg.setAttribute('width',W); bg.setAttribute('height',H); bg.setAttribute('fill','#f8faff'); svg.appendChild(bg);
+
+  for(let i=1;i<=maxItems+1;i++){
+    const r=nodeBase+(i-1)*nodeStep;
+    if(r>avail+35) break;
+    const c=mkEl('circle'); c.setAttribute('cx',CX); c.setAttribute('cy',CY); c.setAttribute('r',r);
+    c.setAttribute('fill','none'); c.setAttribute('stroke','#edf0f7'); c.setAttribute('stroke-width','1');
+    if(i>=3) c.setAttribute('stroke-dasharray','3 5');
+    svg.appendChild(c);
+  }
+
+  // Center node
+  const cColor=clientColor(client);
+  const statusRingColor=STATUS_COLOR[client.status]||'#94a3b8';
+  const sR=mkEl('circle'); sR.setAttribute('cx',CX); sR.setAttribute('cy',CY); sR.setAttribute('r','40');
+  sR.style.fill='none'; sR.style.stroke=statusRingColor; sR.style.strokeWidth='4px';
+  sR.style.opacity=client.status==='active'?'0.5':client.status==='review'?'0.9':'1';
+  svg.appendChild(sR);
+
+  const cGlow=mkEl('circle'); cGlow.setAttribute('cx',CX); cGlow.setAttribute('cy',CY); cGlow.setAttribute('r','44');
+  cGlow.style.fill=cColor+'22'; svg.appendChild(cGlow);
+
+  const cc=mkEl('circle'); cc.setAttribute('cx',CX); cc.setAttribute('cy',CY); cc.setAttribute('r','32');
+  cc.style.fill=cColor; cc.style.stroke='#ffffff'; cc.style.strokeWidth='3px'; svg.appendChild(cc);
+
+  const ct=mkEl('text'); ct.setAttribute('x',CX); ct.setAttribute('y',CY);
+  ct.setAttribute('text-anchor','middle'); ct.setAttribute('dominant-baseline','central');
+  ct.style.fill='#fff'; ct.style.fontSize='13px'; ct.style.fontWeight='800';
+  ct.style.fontFamily='-apple-system,sans-serif'; ct.style.pointerEvents='none';
+  ct.textContent=client.initials; svg.appendChild(ct);
+
+  const nameT=mkEl('text'); nameT.setAttribute('x',CX); nameT.setAttribute('y',CY+52);
+  nameT.setAttribute('text-anchor','middle'); nameT.style.fill='#0f172a'; nameT.style.fontSize='13px'; nameT.style.fontWeight='700'; nameT.style.fontFamily='-apple-system,sans-serif';
+  nameT.textContent=client.name; svg.appendChild(nameT);
+  const aumT=mkEl('text'); aumT.setAttribute('x',CX); aumT.setAttribute('y',CY+67);
+  aumT.setAttribute('text-anchor','middle'); aumT.style.fill='#64748b'; aumT.style.fontSize='11px'; aumT.style.fontFamily='-apple-system,sans-serif';
+  aumT.textContent=`$${(client.aum/1e6).toFixed(2)}M AUM · ${client.risk}`; svg.appendChild(aumT);
+
+  const baseAngle=-Math.PI/2;
+  const step=(2*Math.PI)/spokes.length;
+
+  spokes.forEach((spoke,si)=>{
+    const angle=baseAngle+si*step;
+    const maxR=nodeBase+(spoke.items.length-1)*nodeStep;
+    const sx1=CX+34*Math.cos(angle), sy1=CY+34*Math.sin(angle);
+    const sx2=CX+(maxR+nodeR+4)*Math.cos(angle), sy2=CY+(maxR+nodeR+4)*Math.sin(angle);
+    const spl=mkEl('line'); spl.setAttribute('x1',sx1); spl.setAttribute('y1',sy1); spl.setAttribute('x2',sx2); spl.setAttribute('y2',sy2);
+    spl.style.stroke=spoke.color+'40'; spl.style.strokeWidth='2px';
+    svg.insertBefore(spl,cGlow);
+
+    spoke.items.forEach((item,ii)=>{
+      const r=nodeBase+ii*nodeStep;
+      const ix=CX+r*Math.cos(angle), iy=CY+r*Math.sin(angle);
+      const iColor=item.color||spoke.color;
+      const glow=mkEl('circle'); glow.setAttribute('cx',ix); glow.setAttribute('cy',iy); glow.setAttribute('r',nodeR+8);
+      glow.style.fill=iColor+'18'; svg.appendChild(glow);
+      const nc=mkEl('circle'); nc.setAttribute('cx',ix); nc.setAttribute('cy',iy); nc.setAttribute('r',nodeR);
+      nc.style.fill=iColor; nc.style.stroke='#ffffff'; nc.style.strokeWidth='2.5px';
+      nc.style.filter=`drop-shadow(0 2px 6px ${iColor}55)`;
+      svg.appendChild(nc);
+      const initials=(item.name||'').split(' ').map(w=>w[0]).join('').slice(0,3).toUpperCase();
+      const nl=mkEl('text'); nl.setAttribute('x',ix); nl.setAttribute('y',iy);
+      nl.setAttribute('text-anchor','middle'); nl.setAttribute('dominant-baseline','central');
+      nl.style.fill='#fff'; nl.style.fontSize='8px'; nl.style.fontWeight='700'; nl.style.fontFamily='-apple-system,sans-serif'; nl.style.pointerEvents='none';
+      nl.textContent=initials; svg.appendChild(nl);
+      const isR=Math.cos(angle)>0.15, isL=Math.cos(angle)<-0.15;
+      const tx=isR?ix+nodeR+7:isL?ix-nodeR-7:ix;
+      const ty=isR||isL?iy:Math.sin(angle)>0?iy+nodeR+14:iy-nodeR-14;
+      const anchor=isR?'start':isL?'end':'middle';
+      const nt=mkEl('text'); nt.setAttribute('x',tx); nt.setAttribute('y',ty-5);
+      nt.setAttribute('text-anchor',anchor); nt.style.fill='#0f172a'; nt.style.fontSize='10.5px'; nt.style.fontWeight='600'; nt.style.fontFamily='-apple-system,sans-serif'; nt.style.pointerEvents='none';
+      nt.textContent=item.name.length>24?item.name.slice(0,22)+'…':item.name; svg.appendChild(nt);
+      if(item.sub){
+        const ns=mkEl('text'); ns.setAttribute('x',tx); ns.setAttribute('y',ty+8);
+        ns.setAttribute('text-anchor',anchor); ns.style.fill='#94a3b8'; ns.style.fontSize='9px'; ns.style.fontFamily='-apple-system,sans-serif'; ns.style.pointerEvents='none';
+        ns.textContent=item.sub; svg.appendChild(ns);
+      }
+    });
+
+    const labelR=nodeBase+(spoke.items.length-1)*nodeStep+nodeR+22;
+    const catT=mkEl('text'); catT.setAttribute('x',CX+labelR*Math.cos(angle)); catT.setAttribute('y',CY+labelR*Math.sin(angle));
+    catT.setAttribute('text-anchor','middle'); catT.setAttribute('dominant-baseline','central');
+    catT.style.fill=spoke.color; catT.style.fontSize='9.5px'; catT.style.fontWeight='700'; catT.style.letterSpacing='0.05em'; catT.style.fontFamily='-apple-system,sans-serif';
+    catT.textContent=spoke.label; svg.appendChild(catT);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  BACK
+// ═══════════════════════════════════════════════════
+function backToPractice(){
+  document.getElementById('clientView').classList.remove('visible');
+  document.getElementById('practiceView').style.display='flex';
+}
+document.getElementById('cmBack').onclick=backToPractice;
+document.getElementById('cmBackTab').onclick=backToPractice;
+
+// ═══════════════════════════════════════════════════
+//  SIDEBAR FILTERS
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.fi').forEach(fi=>{
+  fi.addEventListener('click',()=>{
+    document.querySelectorAll('.fi').forEach(f=>f.classList.remove('active'));
+    fi.classList.add('active');
+    applyFilter(fi.dataset.filter);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+//  COMPLIANCE DASHBOARD
+// ═══════════════════════════════════════════════════
+// Central view switcher — all views are inside mainArea, only one visible at a time
+const ALL_VIEWS=['practiceView','clientView','dashboardView','inboxView','conductorView','tasksView','complianceView'];
+const NAV_MAP={practiceView:'navBrain',dashboardView:'navDash',inboxView:'navInbox',conductorView:'navConductor',tasksView:'navTasks'};
+
+function showView(id){
+  ALL_VIEWS.forEach(v=>{ const e=document.getElementById(v); if(e) e.style.display='none'; });
+  const t=document.getElementById(id); if(t) t.style.display='flex';
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const nid=NAV_MAP[id]; if(nid){ const n=document.getElementById(nid); if(n) n.classList.add('active'); }
+  const tb=document.getElementById('tabBrain'), tr=document.getElementById('tabReviews');
+  if(tb) tb.classList.toggle('active',id==='practiceView');
+  if(tr) tr.classList.toggle('active',id==='complianceView');
+  if(id==='dashboardView')  buildDashboard();
+  else if(id==='inboxView') buildInbox();
+  else if(id==='conductorView') buildConductor();
+  else if(id==='tasksView') buildTasksView();
+  else if(id==='complianceView') buildComplianceDashboard();
+}
+
+function showBrainView(){ showView('practiceView'); }
+function showComplianceDashboard(){ showView('complianceView'); }
+
+// ── DASHBOARD ──────────────────────────────────────
+function buildDashboard(){
+  const totalAUM=CLIENTS.reduce((s,c)=>s+c.aum,0);
+  const totalRev=CLIENTS.reduce((s,c)=>{const n=parseFloat((c.feeAmount||'').replace(/[^0-9]/g,'')); return s+(isNaN(n)?0:n);},0);
+  const active=CLIENTS.filter(c=>c.status==='active').length;
+  const review=CLIENTS.filter(c=>c.status==='review').length;
+  const risk=CLIENTS.filter(c=>c.status==='risk').length;
+  const top=[...CLIENTS].sort((a,b)=>b.aum-a.aum).slice(0,6);
+  const mo={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  const card=(label,val,sub,color)=>`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px"><div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">${label}</div><div style="font-size:22px;font-weight:700;color:${color};margin-top:4px">${val}</div><div style="font-size:11px;color:#64748b;margin-top:2px">${sub}</div></div>`;
+  document.getElementById('dashBody').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+      ${card('Total AUM','$'+( totalAUM/1e6).toFixed(1)+'M',CLIENTS.length+' clients','#16a34a')}
+      ${card('Annual Revenue','$'+(totalRev/1000).toFixed(1)+'K','Ongoing fees','#6366f1')}
+      ${card('Needs Attention',(review+risk)+' clients',risk+' urgent · '+review+' review',risk>0?'#dc2626':'#d97706')}
+      ${card('Avg Fee / Client','$'+Math.round(totalRev/CLIENTS.length/100)*100,'Per year','#0369a1')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+        <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Client Health</div>
+        <div style="display:flex;border-radius:6px;overflow:hidden;height:10px;margin-bottom:10px">
+          <div style="background:#22c55e;flex:${active}"></div>
+          <div style="background:#f59e0b;flex:${review}"></div>
+          <div style="background:#ef4444;flex:${risk}"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:12px">
+          ${[['Active',active,'#22c55e'],['Review Due',review,'#f59e0b'],['Urgent',risk,'#ef4444']].map(([l,v,c])=>`<div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:700;color:${c}">${v}</div><div style="font-size:10px;color:#64748b">${l}</div></div>`).join('')}
+        </div>
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px">By Segment</div>
+        <div style="display:flex;gap:8px">
+          ${['HNW','MA','ACC'].map(s=>{const cnt=CLIENTS.filter(c=>c.segment===s).length,aum=CLIENTS.filter(c=>c.segment===s).reduce((x,c)=>x+c.aum,0),col=s==='HNW'?'#f59e0b':s==='MA'?'#10b981':'#818cf8';return `<div style="flex:1;background:#f8fafc;border-radius:6px;padding:8px"><div style="font-size:9px;font-weight:700;color:${col}">${s}</div><div style="font-size:15px;font-weight:700;color:#1e293b">${cnt}</div><div style="font-size:10px;color:#64748b">$${(aum/1e6).toFixed(1)}M</div></div>`;}).join('')}
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+        <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Adviser Performance</div>
+        ${ADVISORS.map(a=>{const cls=CLIENTS.filter(c=>c.advisor===a.id),aum=cls.reduce((s,c)=>s+c.aum,0),rev=cls.reduce((s,c)=>{const n=parseFloat((c.feeAmount||'').replace(/[^0-9]/g,''));return s+(isNaN(n)?0:n);},0),pct=Math.round(aum/totalAUM*100);return `<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="showView('practiceView')"><img src="${ADVISOR_PHOTOS[a.id]}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'"><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">${a.name}</div><div style="margin-top:3px;background:#f1f5f9;border-radius:3px;height:4px;overflow:hidden"><div style="background:${a.color};height:100%;width:${pct}%"></div></div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:700;color:#16a34a">$${(aum/1e6).toFixed(1)}M</div><div style="font-size:10px;color:#64748b">${cls.length} · $${(rev/1000).toFixed(1)}K</div></div></div>`;}).join('')}
+      </div>
+    </div>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Top Clients by AUM</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${top.map(c=>`<div style="background:#f8fafc;border:1px solid #f1f5f9;border-radius:8px;padding:10px;cursor:pointer" onclick="showView('practiceView');setTimeout(()=>onClickNode('${c.id}'),320)"><div style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><div style="width:26px;height:26px;border-radius:50%;background:${clientColor(c)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">${c.initials}</div><div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div><div style="font-size:10px;color:#94a3b8">${c.segment} · Tier ${c.tier}</div></div></div><div style="font-size:15px;font-weight:700;color:#16a34a">$${(c.aum/1e6).toFixed(2)}M</div><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><div style="width:7px;height:7px;border-radius:50%;border:2px solid ${STATUS_COLOR[c.status]}"></div><div style="font-size:10px;color:#64748b">${c.risk} · ${c.reviewDate}</div></div></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── INBOX ──────────────────────────────────────────
+function buildInbox(){
+  const alerts=[
+    {icon:'⚠',bg:'#fef2f2',bd:'#fecaca',tag:'Urgent',tc:'#dc2626',title:'Cash Flow Review — Aiden Brown',text:'Urgent action required. High debt ratio. SOA overdue. Requires immediate attention.',client:'c8',time:'Just now'},
+    {icon:'📋',bg:'#fff7ed',bd:'#fed7aa',tag:'SOA Due',tc:'#d97706',title:'Succession Plan SOA — Anderson Family',text:'SOA in progress and due this month. Review strategy before upcoming client meeting.',client:'c5',time:'2 hours ago'},
+    {icon:'📅',bg:'#fffbeb',bd:'#fde68a',tag:'Review Due',tc:'#d97706',title:'Annual Review — Nguyen Family',text:'Review date approaching. ROA required for proposed salary sacrifice change.',client:'c3',time:'Yesterday'},
+    {icon:'✍',bg:'#faf5ff',bd:'#e9d5ff',tag:'Consent Due',tc:'#7e22ce',title:'Annual Fee Consent — Lisa Chang',text:'Annual consent not yet signed for FY26. Review meeting scheduled Jun 2026. Fee arrangement cannot continue without signed consent.',client:'c7',time:'3 days ago'},
+  ];
+  document.getElementById('inboxBody').innerHTML=`
+    <div style="max-width:680px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#1e293b">4 unread notifications</div>
+        <div style="font-size:12px;color:#6366f1;cursor:pointer;font-weight:500">Mark all read</div>
+      </div>
+      ${alerts.map(a=>`<div style="background:${a.bg};border:1px solid ${a.bd};border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer" onclick="showView('practiceView');setTimeout(()=>onClickNode('${a.client}'),320)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">${a.icon}</span><span style="color:${a.tc};font-size:10px;font-weight:700;background:${a.bg};border:1px solid ${a.bd};padding:2px 8px;border-radius:4px">${a.tag}</span><span style="font-size:10.5px;color:#94a3b8;margin-left:auto">${a.time}</span></div><div style="font-size:13px;font-weight:600;color:#1e293b;margin-bottom:3px">${a.title}</div><div style="font-size:12px;color:#64748b;line-height:1.5">${a.text}</div></div>`).join('')}
+      <div style="background:#f8fafc;border:1px dashed #e2e8f0;border-radius:10px;padding:24px;text-align:center;margin-top:4px"><div style="font-size:13px;font-weight:500;color:#94a3b8">No further notifications</div><div style="font-size:11.5px;color:#cbd5e1;margin-top:4px">New compliance alerts will appear here automatically</div></div>
+    </div>`;
+}
+
+// ── CONDUCTOR ──────────────────────────────────────
+function buildConductor(){
+  const cols=[
+    {key:'overdue',label:'⚠ Overdue',bg:'#fef2f2',bd:'#fecaca',tc:'#dc2626',nbg:'#fef2f2',nc:'#dc2626'},
+    {key:'in-progress',label:'● In Progress',bg:'#eef2ff',bd:'#c7d2fe',tc:'#3730a3',nbg:'#eef2ff',nc:'#6366f1'},
+    {key:'pending',label:'○ Pending',bg:'#f8fafc',bd:'#e2e8f0',tc:'#374151',nbg:'#f1f5f9',nc:'#64748b'},
+  ];
+  const crd=(t)=>{const c=CLIENTS.find(x=>x.id===t.client),adv=ADVISORS.find(a=>a.id===c?.advisor);return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.04)" onclick="showView('practiceView');setTimeout(()=>onClickNode('${t.client}'),320)"><div style="display:flex;align-items:center;gap:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:2px;background:${t.color}"></div><span style="font-size:10px;font-weight:600;color:#6366f1;background:#eef2ff;padding:1px 6px;border-radius:3px">${t.ttype}</span></div><div style="font-size:12.5px;font-weight:600;color:#1e293b;margin-bottom:2px">${t.name}</div><div style="font-size:11px;color:#64748b">${c?.name||''}</div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px"><span style="font-size:10px;color:#94a3b8">${adv?.initials||''}</span><span style="font-size:10px;font-weight:600;color:${t.status==='overdue'?'#dc2626':'#64748b'}">${t.due}</span></div></div>`;};
+  document.getElementById('conductorBody').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;height:100%;align-content:start">
+      ${cols.map(col=>{const tasks=TASKS.filter(t=>t.status===col.key);return `<div><div style="font-size:10.5px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px;background:${col.bg};border:1px solid ${col.bd};border-radius:7px;padding:7px 10px"><span style="color:${col.tc}">${col.label}</span><span style="background:${col.nbg};color:${col.nc};font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700;margin-left:auto;border:1px solid ${col.bd}">${tasks.length}</span></div>${tasks.map(crd).join('')}</div>`;}).join('')}
+    </div>`;
+}
+
+// ── TASKS LIST ─────────────────────────────────────
+function buildTasksView(){
+  const overdue=TASKS.filter(t=>t.status==='overdue');
+  const inProg=TASKS.filter(t=>t.status==='in-progress');
+  const mo={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  const pending=TASKS.filter(t=>t.status==='pending').sort((a,b)=>(mo[a.due?.split(' ').slice(-2,-1)[0]]||99)-(mo[b.due?.split(' ').slice(-2,-1)[0]]||99));
+  const row=(t)=>{const c=CLIENTS.find(x=>x.id===t.client),adv=ADVISORS.find(a=>a.id===c?.advisor),stC=t.status==='overdue'?'#dc2626':t.status==='in-progress'?'#6366f1':'#94a3b8',stBg=t.status==='overdue'?'#fef2f2':t.status==='in-progress'?'#eef2ff':'#f8fafc',stL=t.status==='overdue'?'⚠ Overdue':t.status==='in-progress'?'● In Progress':'○ Pending';return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="showView('practiceView');setTimeout(()=>onClickNode('${t.client}'),320)"><div style="width:9px;height:9px;border-radius:2px;background:${t.color};flex-shrink:0"></div><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:#1e293b">${t.name}</div><div style="font-size:11px;color:#64748b">${c?.name||''} · <span style="color:#6366f1">${t.ttype}</span> · ${adv?.name||''}</div></div><span style="font-size:10.5px;color:#64748b;white-space:nowrap;margin-right:8px">${t.due}</span><span style="background:${stBg};color:${stC};font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;border:1px solid ${stBg==='#fef2f2'?'#fecaca':stBg==='#eef2ff'?'#c7d2fe':'#e2e8f0'}">${stL}</span></div>`;};
+  const section=(title,tbg,tbd,ttc,tasks)=>`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:12px"><div style="padding:9px 14px;background:${tbg};border-bottom:1px solid ${tbd}"><span style="font-size:11px;font-weight:700;color:${ttc};text-transform:uppercase;letter-spacing:.06em">${title} (${tasks.length})</span></div>${tasks.map(row).join('')}</div>`;
+  document.getElementById('tasksBody').innerHTML=
+    section('⚠ Overdue','#fef2f2','#fecaca','#991b1b',overdue)+
+    section('● In Progress','#eef2ff','#c7d2fe','#3730a3',inProg)+
+    section('○ Pending','#f8fafc','#e2e8f0','#374151',pending);
+}
+
+function buildComplianceDashboard(){
+  const urgent   = CLIENTS.filter(c=>c.status==='risk'||c.soaStatus==='Overdue');
+  const soaDue   = CLIENTS.filter(c=>['SOA Due','ROA Due'].includes(c.soaStatus));
+  const reviews  = CLIENTS.filter(c=>c.status==='review');
+  const el=e=>document.getElementById(e);
+  el('cv-urgent').innerHTML = urgent.length  ? `<strong style="color:#dc2626">${urgent.length}</strong> urgent` : '';
+  el('cv-soa').innerHTML    = soaDue.length  ? `<strong style="color:#d97706">${soaDue.length}</strong> SOA/ROA due` : '';
+  el('cv-reviews').innerHTML= reviews.length ? `<strong style="color:#6366f1">${reviews.length}</strong> reviews overdue` : '';
+
+  // Revenue calc
+  const advData=ADVISORS.map(a=>{
+    const cls=CLIENTS.filter(c=>c.advisor===a.id);
+    const rev=cls.reduce((s,c)=>{const n=parseFloat((c.feeAmount||'').replace(/[^0-9]/g,'')); return s+(isNaN(n)?0:n);},0);
+    return {...a,cls,rev,aum:cls.reduce((s,c)=>s+c.aum,0)};
+  });
+  const totalRev=advData.reduce((s,a)=>s+a.rev,0);
+
+  // Sort clients by review month
+  const mo={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  const sortedClients=[...CLIENTS].sort((a,b)=>(mo[a.reviewDate?.split(' ')[0]]||99)-(mo[b.reviewDate?.split(' ')[0]]||99));
+
+  const row=(c,extra='')=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;cursor:pointer"
+         onclick="showBrainView();setTimeout(()=>onClickNode('${c.id}'),320)">
+      <div style="width:26px;height:26px;border-radius:50%;background:${clientColor(c)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">${c.initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div style="font-size:10.5px;color:#94a3b8">${ADVISORS.find(a=>a.id===c.advisor)?.name||''}</div>
+      </div>
+      ${extra}
+    </div>`;
+
+  document.getElementById('complianceBody').innerHTML=`
+
+    ${urgent.length?`
+    <div style="grid-column:1/-1;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">⚠ Urgent — ${urgent.length} client${urgent.length>1?'s':''} need immediate attention</div>
+      ${urgent.map(c=>row(c,`<span style="background:#fef2f2;color:#dc2626;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid #fecaca;white-space:nowrap">${c.soaStatus==='Overdue'?'SOA Overdue':'⚠ At Risk'}</span>`)).join('')}
+    </div>`:''}
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📋 SOA / ROA Pipeline (${soaDue.length})</div>
+      ${soaDue.length
+        ? soaDue.map(c=>row(c,`<span style="background:${c.soaStatus==='SOA Due'?'#eff6ff':'#fff7ed'};color:${c.soaStatus==='SOA Due'?'#1d4ed8':'#92400e'};font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap">${c.soaStatus}</span>`)).join('')
+        : `<div style="font-size:12px;color:#94a3b8;padding:8px 0">All SOA/ROA documents current ✓</div>`}
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📅 Review Pipeline</div>
+      ${sortedClients.map(c=>row(c,`<span style="font-size:11px;font-weight:600;white-space:nowrap;color:${c.status==='risk'?'#dc2626':c.status==='review'?'#d97706':'#64748b'}">${c.reviewDate}</span>`)).join('')}
+    </div>
+
+    <div style="grid-column:1/-1;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">💰 Revenue by Adviser</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+        ${advData.map(a=>`
+          <div style="background:#f8fafc;border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <img src="${ADVISOR_PHOTOS[a.id]||''}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0" onerror="this.style.display='none'">
+              <div><div style="font-size:12.5px;font-weight:600;color:#1e293b">${a.name}</div><div style="font-size:10.5px;color:#64748b">${a.cls.length} clients</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div><div style="font-size:8.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Annual Fees</div><div style="font-size:15px;font-weight:700;color:#6366f1">$${(a.rev/1000).toFixed(1)}K</div></div>
+              <div><div style="font-size:8.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">AUM</div><div style="font-size:15px;font-weight:700;color:#16a34a">$${(a.aum/1e6).toFixed(1)}M</div></div>
+            </div>
+            <div style="margin-top:8px;background:#e2e8f0;border-radius:4px;height:4px;overflow:hidden">
+              <div style="background:#6366f1;height:100%;width:${Math.round(a.rev/totalRev*100)}%;border-radius:4px"></div>
+            </div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:3px">${Math.round(a.rev/totalRev*100)}% of practice revenue</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding-top:12px;border-top:1px solid #f3f4f6;text-align:center">
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Total Annual Revenue</div><div style="font-size:18px;font-weight:700;color:#6366f1">$${(totalRev/1000).toFixed(1)}K</div></div>
+        <div style="border-left:1px solid #f3f4f6;border-right:1px solid #f3f4f6"><div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Total AUM</div><div style="font-size:18px;font-weight:700;color:#16a34a">$${(CLIENTS.reduce((s,c)=>s+c.aum,0)/1e6).toFixed(1)}M</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Avg Fee / Client</div><div style="font-size:18px;font-weight:700;color:#0369a1">$${Math.round(totalRev/CLIENTS.length/100)*100}</div></div>
+      </div>
+    </div>
+
+    <div style="grid-column:1/-1;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">✍ Annual Fee Consent — Status</div>
+      <div style="font-size:11.5px;color:#64748b;margin-bottom:10px">Under the DBFO reforms, clients must sign an annual fee consent at their review meeting to continue ongoing fee arrangements.</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        ${CLIENTS.map(c=>{
+          const signed=c.consentSigned;
+          const bg=signed?'#f0fdf4':'#fef2f2', bd=signed?'#bbf7d0':'#fecaca', tc=signed?'#15803d':'#dc2626';
+          return `<div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:9px;cursor:pointer"
+               onclick="showView('practiceView');setTimeout(()=>onClickNode('${c.id}'),320)">
+            <div style="font-size:8.5px;color:${tc};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${ADVISORS.find(a=>a.id===c.advisor)?.initials||''} · ${c.segment}</div>
+            <div style="font-size:11.5px;font-weight:600;color:#1e293b;margin:3px 0;line-height:1.3">${c.name}</div>
+            <div style="font-size:11px;color:${tc};font-weight:700">${signed?'✓ Consent Signed':'✗ Consent Outstanding'}</div>
+            <div style="font-size:10px;color:#64748b;margin-top:2px">Reviewed: ${c.lastReview||'—'}</div>
+          </div>`;}).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+buildGraph();
+renderPracticeBrain();
+setTimeout(zoomToPractice, 80); // initial tight fit after first paint
+
+// ── Advisor photo strip in sidebar ──
+(function buildAdvCards(){
+  const container=document.getElementById('advCards');
+  if(!container) return;
+  ADVISORS.forEach(adv=>{
+    const myClients=CLIENTS.filter(c=>c.advisor===adv.id);
+    const aum=myClients.reduce((s,c)=>s+c.aum,0);
+    const div=document.createElement('div');
+    div.className='adv-card'; div.dataset.filter=`adv-${adv.id}`;
+    const photoEl=ADVISOR_PHOTOS[adv.id]
+      ?`<img class="adv-photo" src="${ADVISOR_PHOTOS[adv.id]}" alt="${adv.initials}" onerror="this.outerHTML='<div class=adv-photo-fb style=background:${adv.color}>${adv.initials}</div>'">`
+      :`<div class="adv-photo-fb" style="background:${adv.color}">${adv.initials}</div>`;
+    div.innerHTML=`${photoEl}<div class="adv-info"><div class="ai-name">${adv.name}</div><div class="ai-title">${adv.title}</div></div><div class="adv-aum">$${(aum/1e6).toFixed(1)}M</div>`;
+    div.addEventListener('click',()=>{
+      document.querySelectorAll('.fi,.adv-card').forEach(f=>f.classList.remove('active'));
+      div.classList.add('active');
+      applyFilter(`adv-${adv.id}`);
+    });
+    container.appendChild(div);
+  });
+})();
+
+// ── Live search ──
+document.getElementById('searchInput').addEventListener('input',e=>{
+  const q=e.target.value.trim().toLowerCase();
+  if(!q){ applyFilter(activeFilter); return; }
+  nodeMap.forEach(({data,el})=>{
+    const clientName=CLIENTS.find(c=>c.id===data.client)?.name?.toLowerCase()||'';
+    const match=data.name?.toLowerCase().includes(q)||clientName.includes(q)||data.type?.includes(q);
+    el.classList.toggle('dim',!match&&data.type!=='practice');
+  });
+  connMap.forEach(({data,el})=>el.classList.add('dim'));
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&selectedId) collapseAll();
+});
+
+// ── Hide canvas hint on first interaction ──
+let hintDismissed=false;
+document.getElementById('mainSvg').addEventListener('click',()=>{
+  if(!hintDismissed){
+    hintDismissed=true;
+    const hint=document.getElementById('canvasHint');
+    if(hint){hint.style.opacity='0';setTimeout(()=>hint.remove(),500);}
+  }
+},{once:false});
+
+let resizeTimer;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{
+    T={x:0,y:0,scale:1}; targetScale=1; currentScale=1;
+    renderPracticeBrain();
+    setTimeout(zoomToPractice, 80);
+  },180);
+});
+</script>
+</body>
+</html>
